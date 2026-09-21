@@ -3,6 +3,7 @@ package com.mazeescape.manager;
 import com.mazeescape.screen.CreditsScreen;
 import com.mazeescape.screen.GameOverScreen;
 import com.mazeescape.screen.GameScreen;
+import com.mazeescape.screen.GameSettingsScreen;
 import com.mazeescape.screen.HowToPlayScreen;
 import com.mazeescape.screen.LeaderboardScreen;
 import com.mazeescape.screen.LevelCompleteScreen;
@@ -48,7 +49,11 @@ public class ScreenManager {
     public void switchScreen(Parent root) {
         if (currentRoot instanceof GameScreen gameScreen) {
             saveProgress();
-            gameScreen.stopGame();
+            if (root instanceof SettingsScreen) {
+                gameScreen.pauseForSettings();
+            } else {
+                gameScreen.stopGame();
+            }
         }
         Scene scene = new Scene(root, width, height);
 
@@ -63,6 +68,7 @@ public class ScreenManager {
             audioManager.playMainMenuMusic();
         } else if (root instanceof GameScreen) {
             audioManager.playHauntedMusic();
+            ((GameScreen) root).restoreAfterSettings();
         } else {
             audioManager.stopBackgroundMusic();
         }
@@ -147,8 +153,12 @@ public class ScreenManager {
     }
 
     public void retryLevel(int level) {
+        retryLevel(level, 3);
+    }
+
+    public void retryLevel(int level, int remainingLives) {
         gameManager.setCurrentLevel(level);
-        gameManager.setLives(3);
+        gameManager.setLives(Math.max(0, remainingLives));
         switchScreen(new GameScreen(level, this));
     }
 
@@ -186,14 +196,35 @@ public class ScreenManager {
     }
 
     public void gameOver(int level) {
+        gameOver(level, gameManager.getLives());
+    }
+
+    public void gameOver(int level, int remainingLives) {
         gameManager.setCurrentLevel(level);
-        gameManager.setLives(0);
+        gameManager.setLives(Math.max(0, remainingLives));
         saveManager.saveGame(gameManager);
-        switchScreen(new GameOverScreen(level, this));
+        switchScreen(new GameOverScreen(level, remainingLives, this));
     }
 
     public void showSettings() {
         switchScreen(new SettingsScreen(settingsManager, this));
+    }
+
+    public void showSettings(Runnable onBack) {
+        switchScreen(new GameSettingsScreen(this, onBack));
+    }
+
+    public void returnToGame(GameScreen gameScreen) {
+        Scene scene = new Scene(gameScreen, width, height);
+        stage.setScene(scene);
+        stage.show();
+        currentRoot = gameScreen;
+        audioManager.syncVolumes(
+                settingsManager.getMasterVolume(),
+                settingsManager.getMusicVolume(),
+                settingsManager.getSfxVolume());
+        audioManager.playHauntedMusic();
+        gameScreen.restoreAfterSettings();
     }
 
     public void showLeaderboard() {

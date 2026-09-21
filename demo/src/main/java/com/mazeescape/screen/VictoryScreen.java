@@ -86,7 +86,7 @@ public class VictoryScreen extends StackPane {
         // PLAY AGAIN
         // =========================
         Button playAgainButton
-                = createButton("PLAY AGAIN");
+                = createButton("PLAY AGAIN", screenManager);
 
         playAgainButton.setOnAction(event -> {
             screenManager.startNewGame();
@@ -96,7 +96,7 @@ public class VictoryScreen extends StackPane {
         // CAMPAIGN
         // =========================
         Button campaignButton
-                = createButton("CAMPAIGN");
+                = createButton("CAMPAIGN", screenManager);
 
         campaignButton.setOnAction(event -> {
             screenManager.showCampaign();
@@ -106,7 +106,7 @@ public class VictoryScreen extends StackPane {
         // LEADERBOARD
         // =========================
         Button leaderboardButton
-                = createButton("LEADERBOARD");
+                = createButton("LEADERBOARD", screenManager);
 
         leaderboardButton.setOnAction(event -> {
             screenManager.showLeaderboard();
@@ -116,7 +116,7 @@ public class VictoryScreen extends StackPane {
         // MAIN MENU
         // =========================
         Button mainMenuButton
-                = createButton("MAIN MENU");
+                = createButton("MAIN MENU", screenManager);
 
         mainMenuButton.setOnAction(event -> {
             screenManager.showMainMenu();
@@ -154,10 +154,10 @@ public class VictoryScreen extends StackPane {
     // =========================
     // BUTTON CREATOR
     // =========================
-    private Button createButton(String text) {
+    private Button createButton(String text, ScreenManager screenManager) {
 
         Button button = new Button(text);
-        button.setOnMouseClicked(event -> ScreenManager.getActive().getAudioManager().playClick());
+        button.setOnMousePressed(event -> screenManager.getAudioManager().playClick());
 
         button.setPrefWidth(280);
         button.setPrefHeight(48);

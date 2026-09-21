@@ -111,7 +111,7 @@ public class LevelCompleteScreen extends StackPane {
         // NEXT LEVEL
         // =========================
         Button nextLevelButton
-                = createButton("NEXT LEVEL");
+                = createButton("NEXT LEVEL", screenManager);
         nextLevelButton.setDisable(level >= screenManager.getGameManager().getTotalLevels());
 
         nextLevelButton.setOnAction(event -> {
@@ -122,7 +122,7 @@ public class LevelCompleteScreen extends StackPane {
         // REPLAY
         // =========================
         Button replayButton
-                = createButton("REPLAY");
+                = createButton("REPLAY", screenManager);
 
         replayButton.setOnAction(event -> {
             screenManager.retryLevel(level);
@@ -132,7 +132,7 @@ public class LevelCompleteScreen extends StackPane {
         // CAMPAIGN
         // =========================
         Button campaignButton
-                = createButton("CAMPAIGN");
+                = createButton("CAMPAIGN", screenManager);
 
         campaignButton.setOnAction(event -> {
             screenManager.showCampaign();
@@ -142,7 +142,7 @@ public class LevelCompleteScreen extends StackPane {
         // MAIN MENU
         // =========================
         Button mainMenuButton
-                = createButton("MAIN MENU");
+                = createButton("MAIN MENU", screenManager);
 
         mainMenuButton.setOnAction(event -> {
             screenManager.showMainMenu();
@@ -199,10 +199,10 @@ public class LevelCompleteScreen extends StackPane {
     // =========================
     // BUTTON CREATOR
     // =========================
-    private Button createButton(String text) {
+    private Button createButton(String text, ScreenManager screenManager) {
 
         Button button = new Button(text);
-        button.setOnMouseClicked(event -> ScreenManager.getActive().getAudioManager().playClick());
+        button.setOnMousePressed(event -> screenManager.getAudioManager().playClick());
 
         button.setPrefWidth(280);
         button.setPrefHeight(48);

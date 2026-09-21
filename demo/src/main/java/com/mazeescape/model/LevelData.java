@@ -40,10 +40,16 @@ public class LevelData {
     // =========================
     private int calculateTimeLimit(int level) {
 
-        if (level <= 10) {
+        if (level <= 5) {
+            return 60;
+        }
+        if (level <= 8) {
+            return 90;
+        }
+        if (level <= 13) {
             return 120;
         }
-        if (level <= 15) {
+        if (level <= 17) {
             return 150;
         }
         return 180;

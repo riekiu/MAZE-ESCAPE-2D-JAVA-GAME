@@ -10,10 +10,14 @@ import javafx.scene.layout.VBox;
 public class GameOverScreen extends StackPane {
 
     public GameOverScreen(int level) {
-        this(level, ScreenManager.getActive());
+        this(level, ScreenManager.getActive().getGameManager().getLives(), ScreenManager.getActive());
     }
 
     public GameOverScreen(int level, ScreenManager screenManager) {
+        this(level, screenManager.getGameManager().getLives(), screenManager);
+    }
+
+    public GameOverScreen(int level, int remainingLives, ScreenManager screenManager) {
 
         // =========================
         // BACKGROUND
@@ -62,7 +66,7 @@ public class GameOverScreen extends StackPane {
                 + "-fx-font-weight: bold;"
         );
 
-        Label livesLabel = new Label("LIVES REMAINING: ♡ ♡ ♡");
+        Label livesLabel = new Label("LIVES REMAINING: " + createLivesText(remainingLives));
         livesLabel.setStyle(
                 "-fx-text-fill: #ff8fa3;"
                 + "-fx-font-size: 18px;"
@@ -77,7 +81,7 @@ public class GameOverScreen extends StackPane {
                 = createButton("RETRY");
 
         retryButton.setOnAction(event -> {
-            screenManager.retryLevel(level);
+            screenManager.retryLevel(level, remainingLives);
         });
 
         // =========================
@@ -127,6 +131,17 @@ public class GameOverScreen extends StackPane {
         content.setAlignment(Pos.CENTER);
 
         getChildren().add(content);
+    }
+
+    private String createLivesText(int remainingLives) {
+        StringBuilder text = new StringBuilder();
+        for (int index = 0; index < 3; index++) {
+            if (index > 0) {
+                text.append(' ');
+            }
+            text.append(index < Math.max(0, remainingLives) ? '♥' : '♡');
+        }
+        return text.toString();
     }
 
     // =========================

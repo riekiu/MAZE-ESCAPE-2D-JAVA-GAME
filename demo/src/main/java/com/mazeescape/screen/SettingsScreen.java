@@ -19,6 +19,28 @@ public class SettingsScreen extends StackPane {
     }
 
     public SettingsScreen(SettingsManager settingsManager, ScreenManager screenManager) {
+        this(settingsManager, screenManager, screenManager::showMainMenu);
+    }
+
+    public SettingsScreen(
+            SettingsManager settingsManager,
+            ScreenManager screenManager,
+            Runnable onBack
+    ) {
+        this(settingsManager, screenManager, onBack, "SETTINGS",
+                "CUSTOMIZE YOUR HAUNTED HOUSE EXPERIENCE", "BACK", true, true);
+    }
+
+    protected SettingsScreen(
+            SettingsManager settingsManager,
+            ScreenManager screenManager,
+            Runnable onBack,
+            String titleText,
+            String subtitleText,
+            String backText,
+            boolean showGameplaySettings,
+            boolean showResetProgress
+    ) {
 
         final SettingsManager manager = java.util.Objects.requireNonNull(settingsManager, "settingsManager");
 
@@ -33,7 +55,7 @@ public class SettingsScreen extends StackPane {
         // =========================
         // TITLE
         // =========================
-        Label title = new Label("SETTINGS");
+        Label title = new Label(titleText);
 
         title.setStyle(
                 "-fx-text-fill: white;"
@@ -43,9 +65,7 @@ public class SettingsScreen extends StackPane {
                 + "-fx-effect: dropshadow(gaussian, #b84cff, 20, 0.6, 0, 0);"
         );
 
-        Label subtitle = new Label(
-                "CUSTOMIZE YOUR HAUNTED HOUSE EXPERIENCE"
-        );
+        Label subtitle = new Label(subtitleText);
 
         subtitle.setStyle(
                 "-fx-text-fill: #b99acb;"
@@ -72,17 +92,29 @@ public class SettingsScreen extends StackPane {
 
         masterSlider.valueProperty().addListener(
                 (observable, oldValue, newValue)
-                -> manager.setMasterVolume(newValue.doubleValue())
+                -> {
+                    double volume = newValue.doubleValue();
+                    manager.setMasterVolume(volume);
+                    screenManager.getAudioManager().setMasterVolume(volume);
+                }
         );
 
         musicSlider.valueProperty().addListener(
                 (observable, oldValue, newValue)
-                -> manager.setMusicVolume(newValue.doubleValue())
+                -> {
+                    double volume = newValue.doubleValue();
+                    manager.setMusicVolume(volume);
+                    screenManager.getAudioManager().setMusicVolume(volume);
+                }
         );
 
         sfxSlider.valueProperty().addListener(
                 (observable, oldValue, newValue)
-                -> manager.setSfxVolume(newValue.doubleValue())
+                -> {
+                    double volume = newValue.doubleValue();
+                    manager.setSfxVolume(volume);
+                    screenManager.getAudioManager().setSfxVolume(volume);
+                }
         );
 
         VBox audioBox = new VBox(
@@ -139,6 +171,10 @@ public class SettingsScreen extends StackPane {
                 screenShake,
                 animations
         );
+        gameplayBox.setVisible(showGameplaySettings);
+        gameplayBox.setManaged(showGameplaySettings);
+        gameplayTitle.setVisible(showGameplaySettings);
+        gameplayTitle.setManaged(showGameplaySettings);
 
         // =========================
         // RESET BUTTONS
@@ -149,6 +185,8 @@ public class SettingsScreen extends StackPane {
         resetProgress.setOnAction(event
                 -> screenManager.resetProgress()
         );
+        resetProgress.setVisible(showResetProgress);
+        resetProgress.setManaged(showResetProgress);
 
         Button resetSettings
                 = createButton("RESET SETTINGS");
@@ -156,6 +194,10 @@ public class SettingsScreen extends StackPane {
         resetSettings.setOnAction(event -> {
 
             manager.resetSettings();
+            screenManager.getAudioManager().syncVolumes(
+                    manager.getMasterVolume(),
+                    manager.getMusicVolume(),
+                    manager.getSfxVolume());
 
             masterSlider.setValue(
                     manager.getMasterVolume()
@@ -186,11 +228,9 @@ public class SettingsScreen extends StackPane {
         // BACK BUTTON
         // =========================
         Button backButton
-                = createButton("BACK");
+                = createButton(backText);
 
-        backButton.setOnAction(event
-                -> screenManager.showMainMenu()
-        );
+        backButton.setOnAction(event -> onBack.run());
 
         // =========================
         // RESET CONTAINER

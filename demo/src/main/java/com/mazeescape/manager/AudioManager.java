@@ -31,6 +31,7 @@ public class AudioManager {
     private Path completeEffect;
     private Path gameOverEffect;
     private Path clickEffect;
+    private Path footstepEffect;
     private final List<MediaPlayer> activeSoundEffects = new ArrayList<>();
 
     public AudioManager() {
@@ -86,12 +87,17 @@ public class AudioManager {
         playGeneratedEffect(5);
     }
 
+    public void playFootstep() {
+        playGeneratedEffect(6);
+    }
+
     // =========================
     // VOLUME
     // =========================
     public void setMasterVolume(double volume) {
         masterVolume = clamp(volume);
         updateMusicVolume();
+        updateSoundEffectVolumes();
     }
 
     public void setMusicVolume(double volume) {
@@ -101,6 +107,7 @@ public class AudioManager {
 
     public void setSfxVolume(double volume) {
         sfxVolume = clamp(volume);
+        updateSoundEffectVolumes();
     }
 
     public double getMasterVolume() {
@@ -229,6 +236,7 @@ public class AudioManager {
                 case 3 -> completeEffect;
                 case 4 -> gameOverEffect;
                 case 5 -> clickEffect;
+                case 6 -> footstepEffect;
                 default -> throw new IllegalArgumentException("Unknown audio effect: " + effectType);
             };
             playSoundEffect(effect.toString());
@@ -277,6 +285,7 @@ public class AudioManager {
         completeEffect = writeTone(directory.resolve("level-complete.wav"), 0.9, 3);
         gameOverEffect = writeTone(directory.resolve("game-over.wav"), 0.8, 4);
         clickEffect = writeTone(directory.resolve("ui-click.wav"), 0.18, 5);
+        footstepEffect = writeTone(directory.resolve("footstep.wav"), 0.16, 6);
     }
 
     private Path writeTone(Path path, double seconds, int type) throws IOException {
@@ -287,21 +296,48 @@ public class AudioManager {
             double time = sample / (double) sampleRate;
             double value;
             if (type == 0) {
-                double pulse = 0.55 + 0.45 * Math.sin(2 * Math.PI * 0.18 * time);
-                value = (Math.sin(2 * Math.PI * 55 * time)
-                        + 0.5 * Math.sin(2 * Math.PI * 73 * time)
-                        + 0.25 * Math.sin(2 * Math.PI * 110 * time)) * 0.16 * pulse;
+                double heartbeat = Math.pow(Math.max(0,
+                        Math.sin(2 * Math.PI * 0.43 * time)), 18);
+                double secondBeat = Math.pow(Math.max(0,
+                        Math.sin(2 * Math.PI * 0.43 * time - 0.8)), 24);
+                double subDrone = Math.sin(2 * Math.PI * 36 * time)
+                        + 0.65 * Math.sin(2 * Math.PI * 43 * time)
+                        + 0.35 * Math.sin(2 * Math.PI * 51 * time);
+                double dissonance = Math.sin(2 * Math.PI * 0.071 * time)
+                        * Math.sin(2 * Math.PI * 17 * time);
+                double wind = Math.sin(2 * Math.PI * 0.23 * time)
+                        * Math.sin(2 * Math.PI * 11 * time)
+                        * Math.sin(2 * Math.PI * 97 * time);
+                double tremolo = 0.72 + 0.28 * Math.sin(2 * Math.PI * 0.13 * time);
+                value = (subDrone * (0.45 + heartbeat * 0.35)
+                        + dissonance * 0.22
+                        + wind * 0.22
+                        + secondBeat * 0.32) * tremolo * 0.14;
             } else {
                 double[] notes = switch (type) {
                     case 1 -> new double[]{523, 659};
                     case 2 -> new double[]{220, 330, 440};
                     case 3 -> new double[]{392, 494, 659, 784};
                     case 5 -> new double[]{880};
+                    case 6 -> new double[]{74, 58};
                     default -> new double[]{220, 165, 110};
                 };
                 int note = Math.min(notes.length - 1, (int) (time / seconds * notes.length));
                 double envelope = Math.max(0, 1 - time / seconds);
-                value = Math.sin(2 * Math.PI * notes[note] * time) * 0.28 * envelope;
+                if (type == 6) {
+                    double stepEnvelope = Math.min(1, time * 100)
+                            * Math.max(0, 1 - time / seconds);
+                    double impact = Math.sin(2 * Math.PI * 95 * time)
+                            * Math.exp(-time * 30);
+                    double body = Math.sin(2 * Math.PI * notes[note] * time)
+                            * Math.exp(-time * 20);
+                    double softClick = Math.sin(2 * Math.PI * 820 * time)
+                            * Math.exp(-time * 42);
+                    value = (impact * 0.34 + body * 0.2 + softClick * 0.05)
+                            * stepEnvelope;
+                } else {
+                    value = Math.sin(2 * Math.PI * notes[note] * time) * 0.28 * envelope;
+                }
             }
             short pcm = (short) Math.max(-32767, Math.min(32767, value * 32767));
             audio[sample * 2] = (byte) (pcm & 0xff);
@@ -327,6 +363,13 @@ public class AudioManager {
         }
     }
 
+    private void updateSoundEffectVolumes() {
+        double volume = masterVolume * sfxVolume;
+        for (MediaPlayer soundEffect : activeSoundEffects) {
+            soundEffect.setVolume(volume);
+        }
+    }
+
     // =========================
     // RESET
     // =========================
@@ -337,6 +380,7 @@ public class AudioManager {
         sfxVolume = 1.0;
 
         updateMusicVolume();
+        updateSoundEffectVolumes();
     }
 
     // =========================
