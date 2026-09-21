@@ -1,0 +1,26 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" type="MavenRunConfiguration" factoryName="Maven">
+    <MavenSettings>
+      <option name="myGoals">
+        <list>
+          <option value="javafx:run" />
+        </list>
+      </option>
+      <option name="myRunnerParameters">
+        <option name="profiles">
+          <set />
+        </option>
+        <option name="workspaceSettings">
+          <value>
+            <MavenWorkspaceSettings>
+              <option name="offlinerMode" value="false" />
+            </MavenWorkspaceSettings>
+          </value>
+        </option>
+      </option>
+    </MavenSettings>
+    <option name="name" value="MazeEscape (JavaFX)" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/demo" />
+    <method v="2" />
+  </configuration>
+</component>
