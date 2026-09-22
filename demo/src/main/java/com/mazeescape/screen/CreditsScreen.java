@@ -96,6 +96,7 @@ public class CreditsScreen extends StackPane {
                 Renz Ivan Casais
                 Mardie Quiros
                 Honneyln Iclabis
+                John Cyrus Celistino
                 """
         );
 

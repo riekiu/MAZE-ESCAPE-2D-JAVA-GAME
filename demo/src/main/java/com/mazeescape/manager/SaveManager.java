@@ -25,6 +25,7 @@ public class SaveManager {
     // SAVE GAME
     // =========================
     public void saveGame(GameManager gameManager) {
+        properties.setProperty("gameSaved", "true");
 
         properties.setProperty(
                 "currentLevel",
@@ -71,8 +72,7 @@ public class SaveManager {
         int lives = getInt("lives", 3);
 
         gameManager.setCurrentLevel(currentLevel);
-        gameManager.setHighestUnlockedLevel(
-                Math.max(highestUnlockedLevel, gameManager.getTotalLevels()));
+        gameManager.setHighestUnlockedLevel(highestUnlockedLevel);
         gameManager.setTotalScore(totalScore);
         gameManager.setLives(lives);
     }
@@ -91,7 +91,8 @@ public class SaveManager {
     // CHECK SAVE
     // =========================
     public boolean hasSaveData() {
-        return new File(SAVE_FILE).exists();
+        return new File(SAVE_FILE).exists()
+                && properties.containsKey("currentLevel");
     }
 
     // =========================

@@ -44,10 +44,7 @@ public class MainMenuScreen extends StackPane {
         ImageView logo = createImageView("/img/menu/logo.png", 570, 321);
 
         Button play = createButton("PLAY");
-        play.setOnAction(event -> screenManager.startNewGame());
-        Button continueButton = createButton("CONTINUE");
-        continueButton.setDisable(!screenManager.getSaveManager().hasSaveData());
-        continueButton.setOnAction(event -> screenManager.continueGame());
+        play.setOnAction(event -> screenManager.playLastPlayedLevel());
         Button campaign = createButton("CAMPAIGN");
         campaign.setOnAction(event -> screenManager.showCampaign());
         Button settings = createButton("SETTINGS");
@@ -61,7 +58,7 @@ public class MainMenuScreen extends StackPane {
         Button exit = createButton("EXIT");
         exit.setOnAction(event -> screenManager.getStage().close());
 
-        VBox buttons = new VBox(4, play, continueButton, campaign, settings, howToPlay,
+        VBox buttons = new VBox(4, play, campaign, settings, howToPlay,
                 leaderboard, credits, exit);
         buttons.setAlignment(Pos.CENTER);
         VBox content = new VBox(12, logo, buttons);

@@ -37,6 +37,11 @@ public class ScreenManager {
         this.leaderboardManager = new LeaderboardManager();
         this.saveManager = new SaveManager();
         this.saveManager.loadLeaderboard(leaderboardManager);
+        if (this.saveManager.hasSaveData()) {
+            this.saveManager.loadGame(gameManager);
+        } else {
+            this.saveManager.saveGame(gameManager);
+        }
         this.audioManager = new AudioManager();
         active = this;
     }
@@ -132,7 +137,7 @@ public class ScreenManager {
         startLevel(1);
     }
 
-    public void continueGame() {
+    public void playLastPlayedLevel() {
         saveManager.loadGame(gameManager);
         startLevel(gameManager.getCurrentLevel(), false);
     }
@@ -149,6 +154,7 @@ public class ScreenManager {
         if (resetLives) {
             gameManager.setLives(3);
         }
+        saveManager.saveGame(gameManager);
         switchScreen(new GameScreen(level, this));
     }
 
@@ -238,6 +244,7 @@ public class ScreenManager {
     public void showHowToPlay() {
         switchScreen(new HowToPlayScreen(this));
     }
+
 
     public void resetProgress() {
         gameManager.resetGame();

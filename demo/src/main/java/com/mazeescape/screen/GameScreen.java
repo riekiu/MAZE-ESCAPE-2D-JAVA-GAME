@@ -40,10 +40,12 @@ import javafx.scene.Node;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.CycleMethod;
 import javafx.scene.paint.LinearGradient;
+import javafx.scene.paint.RadialGradient;
 import javafx.scene.paint.Stop;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
+import javafx.scene.shape.Shape;
 import javafx.scene.Group;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.effect.Glow;
@@ -61,7 +63,16 @@ public class GameScreen extends BorderPane {
     private static final int TILE_SIZE = 64;
     private static final int VIEWPORT_WIDTH = 880;
     private static final int VIEWPORT_HEIGHT = 480;
-    private static final double TARGET_FRAME_TIME = 1.0 / 60.0;
+    private static final int TARGET_FRAME_RATE = 60;
+    private static final double TARGET_FRAME_TIME = 1.0 / TARGET_FRAME_RATE;
+    private static final double PLAYER_RENDER_WIDTH = 76;
+    private static final double PLAYER_RENDER_HEIGHT = 88;
+    private static final Color FOG_COLOR = Color.rgb(10, 10, 16);
+    private static final double FOG_OPACITY = 0.88;
+    private static final double BASE_SIGHT_RADIUS = 165;
+    private static final double SIGHT_RADIUS_DECREASE_PER_LEVEL = 5;
+    private static final double MIN_SIGHT_RADIUS = 70;
+    private static final double SIGHT_EDGE_FEATHER = 45;
 
     private final ScreenManager screenManager;
     private final Player player = new Player(TILE_SIZE + 4, TILE_SIZE + 4);
@@ -77,11 +88,32 @@ public class GameScreen extends BorderPane {
     private int rows;
     private int columns;
     private final int level;
-    private final Image playerDownImage = loadImage("/img/player/character_down.png", "/img/player/player_down.png");
-    private final Image playerLeftImage = loadImage("/img/player/character_left.png", "/img/player/player_left.png");
-    private final Image playerRightImage = loadImage("/img/player/character_right.png", "/img/player/player_right.png");
-    private final Image playerUpImage = loadImage("/img/player/character_up.png", "/img/player/player_up.png");
+    private final Image[][] playerFrames = {
+            {
+                    loadImage("/img/player/player_down_frame_1.png"),
+                    loadImage("/img/player/player_down_frame_2.png"),
+                    loadImage("/img/player/player_down_frame_3.png"),
+                    loadImage("/img/player/player_down_frame_4.png")
+            },
+            {
+                    loadImage("/img/player/player_left_frame_1.png"),
+                    loadImage("/img/player/player_left_frame_2.png"),
+                    loadImage("/img/player/player_left_frame_3.png")
+            },
+            {
+                    loadImage("/img/player/player_right_frame_1.png"),
+                    loadImage("/img/player/player_right_frame_2.png"),
+                    loadImage("/img/player/player_right_frame_3.png")
+            },
+            {
+                    loadImage("/img/player/player_up_frame_1.png"),
+                    loadImage("/img/player/player_up_frame_2.png"),
+                    loadImage("/img/player/player_up_frame_3.png"),
+                    loadImage("/img/player/player_up_frame_4.png")
+            }
+    };
     private Pane mazePane;
+    private Group fogLayer;
     private StackPane gameArea;
     private ScrollPane mazeViewport;
     private StackPane mazeContent;
@@ -93,6 +125,7 @@ public class GameScreen extends BorderPane {
     private Label scoreLabel;
     private Label objectiveLabel;
     private Pane miniMapPane;
+    private Group miniMapFogLayer;
     private ImageView miniMapPlayer;
     private ImageView miniMapKey;
     private ImageView miniMapExit;
@@ -103,10 +136,15 @@ public class GameScreen extends BorderPane {
     private PauseMenu pauseMenu;
     private GameSettingsScreen gameSettingsOverlay;
     private double animationTime;
+    private double walkingAnimationTime;
     private double footstepDistance;
     private boolean playerMoving;
+    private int playerDirectionRow;
+    private int playerAnimationFrame;
     private boolean exitMoved;
     private int displayedLives;
+    private double lastFogCenterX = Double.NaN;
+    private double lastFogCenterY = Double.NaN;
 
     public GameScreen(int level) {
         this(level, ScreenManager.getActive());
@@ -314,7 +352,6 @@ public class GameScreen extends BorderPane {
                 createHudPanel("LIVES", livesLabel, createHudIcon("heart")),
                 createHudPanel("SCORE", scoreLabel, createHudIcon("score")),
                 createHudPanel("OBJECTIVE", objectiveLabel, createHudIcon("key")),
-                createSettingsButton(),
                 createPauseButton()
         );
         hud.setPadding(new javafx.geometry.Insets(10, 18, 10, 18));
@@ -484,7 +521,7 @@ public class GameScreen extends BorderPane {
         VBox legend = new VBox(
                 8,
                 createLegendRow("PLAYER",
-                        createLegendImage(loadImage("/img/player/player_down.png"))),
+                        createLegendImage(playerFrames[0][0])),
                 createLegendRow("KEY", createKeyLegendIcon()),
                 createLegendRow("DOOR", createDoorLegendIcon(false)),
                 createLegendRow("EXIT", createDoorLegendIcon(true)),
@@ -508,6 +545,8 @@ public class GameScreen extends BorderPane {
         miniMapPane.setPrefSize(156, 106);
         miniMapPane.setMinSize(156, 106);
         miniMapPane.setMaxSize(156, 106);
+        Rectangle miniMapClip = new Rectangle(156, 106);
+        miniMapPane.setClip(miniMapClip);
         miniMapPane.setStyle("-fx-background-color: #0b0611;-fx-border-color: #5c3474;-fx-border-width: 1px;");
         renderMiniMap();
         VBox wrapper = new VBox(miniMapPane);
@@ -536,7 +575,11 @@ public class GameScreen extends BorderPane {
             }
         }
 
-        miniMapPlayer = createMiniMapImage(loadImage("/img/player/player_down.png"));
+        miniMapFogLayer = new Group();
+        miniMapFogLayer.setMouseTransparent(true);
+        miniMapPane.getChildren().add(miniMapFogLayer);
+
+        miniMapPlayer = createMiniMapImage(playerFrames[0][0]);
         miniMapKey = createMiniMapImage(loadImage("/img/tiles/key.png"));
         miniMapClosedDoorImage = loadImage("/img/tiles/door.png");
         miniMapOpenDoorImage = loadImage("/img/tiles/door.png");
@@ -573,6 +616,51 @@ public class GameScreen extends BorderPane {
         miniMapExit.setLayoutX(offsetX + (exit.getX() / TILE_SIZE + 0.5) * cellSize - markerSize / 2);
         miniMapExit.setLayoutY(offsetY + (exit.getY() / TILE_SIZE + 0.5) * cellSize - markerSize / 2);
         miniMapExit.setVisible(true);
+        updateMiniMapFog(offsetX, offsetY, cellSize);
+    }
+
+    private void updateMiniMapFog(double offsetX, double offsetY, double cellSize) {
+        if (miniMapFogLayer == null) {
+            return;
+        }
+
+        double centerX = offsetX + (player.getX() / TILE_SIZE + 0.5) * cellSize;
+        double centerY = offsetY + (player.getY() / TILE_SIZE + 0.5) * cellSize;
+        double sightRadius = getSightRadius() / TILE_SIZE * cellSize;
+        double feather = SIGHT_EDGE_FEATHER / TILE_SIZE * cellSize;
+        double outerRadius = sightRadius + feather;
+
+        if (miniMapFogLayer.getChildren().isEmpty()) {
+            double extent = 156 + 106 + outerRadius * 2;
+            Shape fog = Shape.subtract(
+                    new Rectangle(-extent, -extent, extent * 3, extent * 3),
+                    new Circle(0, 0, outerRadius)
+            );
+            fog.setFill(FOG_COLOR.deriveColor(0, 1, 1, FOG_OPACITY));
+
+            Shape featheredEdge = Shape.subtract(
+                    new Circle(0, 0, outerRadius),
+                    new Circle(0, 0, sightRadius)
+            );
+            featheredEdge.setFill(new RadialGradient(
+                    0,
+                    0,
+                    0,
+                    0,
+                    outerRadius,
+                    false,
+                    CycleMethod.NO_CYCLE,
+                    new Stop(sightRadius / outerRadius, Color.TRANSPARENT),
+                    new Stop(0.9, FOG_COLOR.deriveColor(0, 1, 1, 0.42)),
+                    new Stop(1, FOG_COLOR.deriveColor(0, 1, 1, FOG_OPACITY))
+            ));
+            miniMapFogLayer.getChildren().setAll(fog, featheredEdge);
+        }
+
+        miniMapFogLayer.setTranslateX(centerX);
+        miniMapFogLayer.setTranslateY(centerY);
+        miniMapFogLayer.toFront();
+        miniMapPlayer.toFront();
     }
 
     private void updateMiniMapMarkers() {
@@ -668,23 +756,6 @@ public class GameScreen extends BorderPane {
         return button;
     }
 
-    private Button createSettingsButton() {
-        Button button = new Button("⚙");
-        button.setOnMousePressed(event -> screenManager.getAudioManager().playClick());
-        button.setFocusTraversable(false);
-        button.setPrefSize(46, 48);
-        button.setStyle("-fx-background-color: #170d22;-fx-border-color: #76518d;"
-                + "-fx-border-width: 1px;-fx-border-radius: 5px;-fx-background-radius: 5px;"
-                + "-fx-text-fill: #d7b5ed;-fx-font-size: 18px;-fx-cursor: hand;");
-        button.setOnAction(event -> {
-            if (!paused) {
-                pauseGame();
-                openGameSettings();
-            }
-        });
-        return button;
-    }
-
     private void styleHudLabel(Label label) {
         label.setStyle("-fx-text-fill: white;-fx-font-size: 16px;-fx-font-weight: bold;-fx-letter-spacing: 1px;");
     }
@@ -708,16 +779,80 @@ public class GameScreen extends BorderPane {
             }
         }
 
-        playerShape = new ImageView(playerDownImage);
-        playerShape.setFitWidth(48);
-        playerShape.setFitHeight(56);
+        fogLayer = new Group();
+        fogLayer.setMouseTransparent(true);
+
+        playerShape = new ImageView(playerFrames[0][0]);
+        playerShape.setFitWidth(PLAYER_RENDER_WIDTH);
+        playerShape.setFitHeight(PLAYER_RENDER_HEIGHT);
         playerShape.setPreserveRatio(true);
         playerShape.setSmooth(true);
         playerShape.setCache(true);
         keyShape = createKeyVisual();
         exitShape = createExitVisual(false);
         mazePane.getChildren().addAll(playerShape, keyShape, exitShape);
+        mazePane.getChildren().add(fogLayer);
+        playerShape.toFront();
         updateVisualPositions();
+    }
+
+    private void updateFogLayer() {
+        if (fogLayer == null) {
+            return;
+        }
+
+        double centerX = player.getX() + player.getWidth() / 2;
+        double centerY = player.getY() + player.getHeight() / 2;
+        if (Math.abs(centerX - lastFogCenterX) < 1
+                && Math.abs(centerY - lastFogCenterY) < 1) {
+            return;
+        }
+        lastFogCenterX = centerX;
+        lastFogCenterY = centerY;
+        double sightRadius = getSightRadius();
+        double outerRadius = sightRadius + SIGHT_EDGE_FEATHER;
+
+        if (fogLayer.getChildren().isEmpty()) {
+            double mazeWidth = columns * TILE_SIZE;
+            double mazeHeight = rows * TILE_SIZE;
+            double fogExtent = Math.max(mazeWidth, mazeHeight) + outerRadius * 2;
+            Shape fogWithSightOpening = Shape.subtract(
+                    new Rectangle(-fogExtent, -fogExtent, fogExtent * 3, fogExtent * 3),
+                    new Circle(0, 0, outerRadius)
+            );
+            fogWithSightOpening.setFill(FOG_COLOR.deriveColor(
+                        0,
+                        1,
+                        1,
+                        FOG_OPACITY
+            ));
+
+            Shape featheredEdge = Shape.subtract(
+                        new Circle(0, 0, outerRadius),
+                        new Circle(0, 0, sightRadius)
+            );
+            featheredEdge.setFill(new RadialGradient(
+                    0,
+                    0,
+                    0,
+                    0,
+                    outerRadius,
+                    false,
+                    CycleMethod.NO_CYCLE,
+                    new Stop(sightRadius / outerRadius, Color.TRANSPARENT),
+                    new Stop(0.9, FOG_COLOR.deriveColor(0, 1, 1, 0.42)),
+                    new Stop(1, FOG_COLOR.deriveColor(0, 1, 1, FOG_OPACITY))
+            ));
+            fogLayer.getChildren().setAll(fogWithSightOpening, featheredEdge);
+        }
+
+        fogLayer.setTranslateX(centerX);
+        fogLayer.setTranslateY(centerY);
+    }
+
+    private double getSightRadius() {
+        return Math.max(MIN_SIGHT_RADIUS,
+                BASE_SIGHT_RADIUS - (level - 1) * SIGHT_RADIUS_DECREASE_PER_LEVEL);
     }
 
     private LinearGradient hauntedWallPaint(int row, int column) {
@@ -894,6 +1029,13 @@ public class GameScreen extends BorderPane {
         playerMoving = movedDistance > 0;
         if (playerMoving) {
             animationTime += delta * 10;
+            walkingAnimationTime += delta;
+            if (walkingAnimationTime >= 0.12) {
+                playerAnimationFrame =
+                        (playerAnimationFrame + 1) % playerFrames[playerDirectionRow].length;
+                walkingAnimationTime = 0;
+                updatePlayerFrame();
+            }
             footstepDistance += movedDistance;
             if (footstepDistance >= 68) {
                 screenManager.getAudioManager().playFootstep();
@@ -901,19 +1043,32 @@ public class GameScreen extends BorderPane {
             }
         } else {
             animationTime = 0;
+            walkingAnimationTime = 0;
+            playerAnimationFrame = 0;
+            updatePlayerFrame();
             footstepDistance = 0;
         }
     }
 
     private void updatePlayerDirection(double dx, double dy) {
         if (dx < 0) {
-            playerShape.setImage(playerLeftImage);
+            playerDirectionRow = 1;
         } else if (dx > 0) {
-            playerShape.setImage(playerRightImage);
+            playerDirectionRow = 2;
         } else if (dy < 0) {
-            playerShape.setImage(playerUpImage);
+            playerDirectionRow = 3;
         } else if (dy > 0) {
-            playerShape.setImage(playerDownImage);
+            playerDirectionRow = 0;
+        }
+        if (playerAnimationFrame >= playerFrames[playerDirectionRow].length) {
+            playerAnimationFrame = 0;
+        }
+        updatePlayerFrame();
+    }
+
+    private void updatePlayerFrame() {
+        if (playerShape != null) {
+            playerShape.setImage(playerFrames[playerDirectionRow][playerAnimationFrame]);
         }
     }
 
@@ -974,6 +1129,7 @@ public class GameScreen extends BorderPane {
         keyShape.setLayoutY(key.getY());
         exitShape.setLayoutX(exit.getX());
         exitShape.setLayoutY(exit.getY());
+        updateFogLayer();
         updateMiniMapMarkers();
     }
 

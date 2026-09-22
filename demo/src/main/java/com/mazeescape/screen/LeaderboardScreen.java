@@ -4,11 +4,13 @@ import java.util.List;
 
 import com.mazeescape.manager.LeaderboardManager;
 import com.mazeescape.manager.ScreenManager;
+import com.mazeescape.model.LevelData;
 import com.mazeescape.model.LeaderboardEntry;
 
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -107,12 +109,20 @@ public class LeaderboardScreen extends StackPane {
                 HBox row = createRow(
                         String.format("LEVEL %02d", entry.getLevel()),
                         formatTime(entry.getCompletionTime()),
-                        "YOUR RECORD"
+                        formatSpeedRating(entry)
                 );
 
                 leaderboardBox.getChildren().add(row);
             }
         }
+
+        ScrollPane leaderboardScroll = new ScrollPane(leaderboardBox);
+        leaderboardScroll.setFitToWidth(true);
+        leaderboardScroll.setMaxHeight(520);
+        leaderboardScroll.setPrefViewportHeight(520);
+        leaderboardScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        leaderboardScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        leaderboardScroll.setStyle("-fx-background: transparent;-fx-background-color: transparent;");
 
         // =========================
         // BACK BUTTON
@@ -131,7 +141,7 @@ public class LeaderboardScreen extends StackPane {
                 12,
                 title,
                 subtitle,
-                leaderboardBox,
+                leaderboardScroll,
                 backButton
         );
 
@@ -212,6 +222,25 @@ public class LeaderboardScreen extends StackPane {
 
     private String formatTime(int seconds) {
         return String.format("%02d:%02d", seconds / 60, seconds % 60);
+    }
+
+    private String formatSpeedRating(LeaderboardEntry entry) {
+        int timeLimit = new LevelData(entry.getLevel()).getTimeLimit();
+        double completionRatio = (double) entry.getCompletionTime() / timeLimit;
+
+        if (completionRatio <= 0.20) {
+            return "EXCELLENT";
+        }
+        if (completionRatio <= 0.40) {
+            return "GOOD";
+        }
+        if (completionRatio <= 0.60) {
+            return "AVERAGE";
+        }
+        if (completionRatio <0.80) {
+            return "BELOW AVERAGE";
+        }
+        return "POOR";
     }
 
     // =========================
