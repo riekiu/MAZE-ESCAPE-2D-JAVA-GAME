@@ -4,7 +4,7 @@ import com.mazeescape.model.LevelData;
 
 public class LevelManager {
 
-    private static final int TOTAL_LEVELS = 20;
+    private static final int TOTAL_LEVELS = GameManager.TOTAL_LEVELS;
 
     private int currentLevel;
 

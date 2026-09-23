@@ -113,7 +113,7 @@ public class MainMenuScreen extends StackPane {
         levels.setHgap(10);
         levels.setVgap(10);
         levels.setAlignment(Pos.CENTER);
-        for (int level = 1; level <= 20; level++) {
+        for (int level = 1; level <= screenManager.getGameManager().getTotalLevels(); level++) {
             Button button = createButton(String.format("LEVEL %02d", level));
             button.setPrefWidth(150);
             button.setPrefHeight(42);

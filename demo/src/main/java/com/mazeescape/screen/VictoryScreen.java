@@ -57,7 +57,7 @@ public class VictoryScreen extends StackPane {
         );
 
         Label levelsLabel = new Label(
-                "LEVELS COMPLETED: " + levelsCompleted + " / 20"
+                "LEVELS COMPLETED: " + levelsCompleted + " / " + screenManager.getGameManager().getTotalLevels()
         );
 
         Label bestScoreLabel = new Label(

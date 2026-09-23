@@ -47,6 +47,8 @@ import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Shape;
 import javafx.scene.Group;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.effect.Glow;
 import javafx.util.Duration;
@@ -68,7 +70,8 @@ public class GameScreen extends BorderPane {
     private static final double PLAYER_RENDER_WIDTH = 76;
     private static final double PLAYER_RENDER_HEIGHT = 88;
     private static final Color FOG_COLOR = Color.rgb(10, 10, 16);
-    private static final double FOG_OPACITY = 0.88;
+    private static final double LIGHT_FOG_OPACITY = 0.48;
+    private static final double HEAVY_FOG_OPACITY = 0.98;
     private static final double BASE_SIGHT_RADIUS = 165;
     private static final double SIGHT_RADIUS_DECREASE_PER_LEVEL = 5;
     private static final double MIN_SIGHT_RADIUS = 70;
@@ -125,12 +128,12 @@ public class GameScreen extends BorderPane {
     private Label scoreLabel;
     private Label objectiveLabel;
     private Pane miniMapPane;
-    private Group miniMapFogLayer;
+    private Canvas miniMapFogLayer;
+    private boolean[][] miniMapExplored;
+    private int lastMiniMapPlayerRow = -1;
+    private int lastMiniMapPlayerColumn = -1;
     private ImageView miniMapPlayer;
-    private ImageView miniMapKey;
-    private ImageView miniMapExit;
-    private Image miniMapClosedDoorImage;
-    private Image miniMapOpenDoorImage;
+    private Label fieldNotesObjectiveLabel;
     private AnimationTimer gameLoop;
     private boolean paused;
     private PauseMenu pauseMenu;
@@ -157,7 +160,7 @@ public class GameScreen extends BorderPane {
         this.rows = levelData.getGridSize();
         this.columns = levelData.getGridSize();
         generateMaze();
-        int[] keyPosition = findFarthestFloor(1, 1);
+        int[] keyPosition = findRandomKeyFloor(1, 1);
         this.key = new Key(TILE_SIZE * keyPosition[1] + 20,
                 TILE_SIZE * keyPosition[0] + 20);
         this.exit = new Exit(TILE_SIZE * (columns - 2) + 18,
@@ -211,6 +214,7 @@ public class GameScreen extends BorderPane {
                 stack.remove(stack.size() - 1);
             }
         }
+        carveExtraRoutes(walls, random);
         walls[1][1] = false;
         walls[rows - 2][columns - 2] = false;
         if ((rows & 1) == 0) {
@@ -228,38 +232,77 @@ public class GameScreen extends BorderPane {
         }
     }
 
+    /** Opens selected interior dividers in the spanning-tree maze to create loops. */
+    private void carveExtraRoutes(boolean[][] walls, Random random) {
+        List<int[]> possibleOpenings = new ArrayList<>();
+        for (int row = 1; row < rows - 1; row++) {
+            for (int column = 1; column < columns - 1; column++) {
+                if (!walls[row][column]) continue;
+                boolean joinsHorizontalFloors = column > 1 && column < columns - 2
+                        && !walls[row][column - 1] && !walls[row][column + 1];
+                boolean joinsVerticalFloors = row > 1 && row < rows - 2
+                        && !walls[row - 1][column] && !walls[row + 1][column];
+                if (joinsHorizontalFloors || joinsVerticalFloors) {
+                    possibleOpenings.add(new int[]{row, column});
+                }
+            }
+        }
+
+        Collections.shuffle(possibleOpenings, random);
+        double loopRate = 0.18 + 0.004 * (Math.max(1, Math.min(50, level)) - 1);
+        int openings = (int) Math.round(possibleOpenings.size() * loopRate);
+        for (int index = 0; index < openings; index++) {
+            int[] opening = possibleOpenings.get(index);
+            walls[opening[0]][opening[1]] = false;
+        }
+    }
+
     private void createMazeModel() {
         if (maze == null) {
             generateMaze();
         }
     }
 
-    private int[] findFarthestFloor(int startRow, int startColumn) {
-        int[][] distance = new int[rows][columns];
-        for (int row = 0; row < rows; row++) {
-            java.util.Arrays.fill(distance[row], -1);
-        }
-        List<int[]> queue = new ArrayList<>();
-        queue.add(new int[]{startRow, startColumn});
-        distance[startRow][startColumn] = 0;
-        int[] farthest = {startRow, startColumn};
-        for (int index = 0; index < queue.size(); index++) {
-            int[] current = queue.get(index);
-            if ((current[0] != rows - 2 || current[1] != columns - 2)
-                    && distance[current[0]][current[1]] > distance[farthest[0]][farthest[1]]) {
-                farthest = current;
-            }
-            for (int[] direction : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
-                int nextRow = current[0] + direction[0];
-                int nextColumn = current[1] + direction[1];
-                if (nextRow >= 0 && nextRow < rows && nextColumn >= 0 && nextColumn < columns
-                        && distance[nextRow][nextColumn] == -1 && !maze.isWall(nextRow, nextColumn)) {
-                    distance[nextRow][nextColumn] = distance[current[0]][current[1]] + 1;
-                    queue.add(new int[]{nextRow, nextColumn});
+    private int[] findRandomKeyFloor(int startRow, int startColumn) {
+        int[][] distances = calculateFloorDistances(startRow, startColumn);
+        int exitRow = rows - 2;
+        int exitColumn = columns - 2;
+        int greatestDistance = 0;
+
+        for (int row = 1; row < rows - 1; row++) {
+            for (int column = 1; column < columns - 1; column++) {
+                if (distances[row][column] >= 0
+                        && (row != exitRow || column != exitColumn)) {
+                    greatestDistance = Math.max(greatestDistance, distances[row][column]);
                 }
             }
         }
-        return farthest;
+
+        // Randomize among reachable, relatively distant tiles so the key still takes
+        // exploration without repeatedly spawning right beside the player.
+        int minimumDistance = Math.max(3, (int) Math.ceil(greatestDistance * 0.65));
+        List<int[]> candidates = new ArrayList<>();
+        for (int row = 1; row < rows - 1; row++) {
+            for (int column = 1; column < columns - 1; column++) {
+                if (distances[row][column] >= minimumDistance
+                        && (row != startRow || column != startColumn)
+                        && (row != exitRow || column != exitColumn)) {
+                    candidates.add(new int[]{row, column});
+                }
+            }
+        }
+
+        if (candidates.isEmpty()) {
+            for (int row = 1; row < rows - 1; row++) {
+                for (int column = 1; column < columns - 1; column++) {
+                    if (distances[row][column] > 0
+                            && (row != exitRow || column != exitColumn)) {
+                        candidates.add(new int[]{row, column});
+                    }
+                }
+            }
+        }
+        return candidates.get(new Random().nextInt(candidates.size()));
     }
 
     private void moveExitAfterKeyCollection() {
@@ -342,11 +385,15 @@ public class GameScreen extends BorderPane {
         livesLabel = new Label();
         scoreLabel = new Label();
         objectiveLabel = new Label();
-        Label title = new Label("MAZE ESCAPE");
-        styleHudTitle(title);
+        ImageView titleLogo = new ImageView(loadImage("/img/menu/landscape_logo.png"));
+        titleLogo.setFitWidth(118);
+        titleLogo.setFitHeight(62);
+        titleLogo.setPreserveRatio(true);
+        titleLogo.setSmooth(true);
+        titleLogo.setEffect(new DropShadow(10, Color.rgb(139, 44, 255, 0.45)));
         HBox hud = new HBox(
                 8,
-                title,
+                titleLogo,
                 createHudPanel("LEVEL", levelLabel, createHudIcon("level")),
                 createHudPanel("TIME", timerLabel, createHudIcon("timer")),
                 createHudPanel("LIVES", livesLabel, createHudIcon("heart")),
@@ -436,12 +483,7 @@ public class GameScreen extends BorderPane {
         StackPane.setAlignment(rightMarker, Pos.TOP_RIGHT);
         StackPane.setMargin(rightMarker, new javafx.geometry.Insets(4, 5, 0, 0));
 
-        Label footer = new Label("M A Z E   E S C A P E   •   E X P L O R A T I O N   Z O N E");
-        footer.setStyle("-fx-text-fill: #846e91;-fx-font-size: 10px;-fx-font-weight: bold;"
-                + "-fx-letter-spacing: 2px;");
-        StackPane.setAlignment(footer, Pos.BOTTOM_CENTER);
-        StackPane.setMargin(footer, new javafx.geometry.Insets(0, 0, 18, 0));
-        frame.getChildren().addAll(title, leftMarker, rightMarker, footer);
+        frame.getChildren().addAll(title, leftMarker, rightMarker);
         return frame;
     }
 
@@ -451,6 +493,10 @@ public class GameScreen extends BorderPane {
                 + "-fx-letter-spacing: 1.5px;");
         value.setStyle("-fx-text-fill: #f5e5b0;-fx-font-size: 13px;-fx-font-weight: bold;"
                 + "-fx-letter-spacing: 0.7px;");
+        if ("LEVEL".equals(heading)) {
+            value.setStyle("-fx-text-fill: " + difficultyColorCss()
+                    + ";-fx-font-size: 13px;-fx-font-weight: bold;-fx-letter-spacing: 0.7px;");
+        }
         VBox text = new VBox(2, title, value);
         HBox panel = new HBox(8, icon, text);
         panel.setAlignment(Pos.CENTER_LEFT);
@@ -459,6 +505,19 @@ public class GameScreen extends BorderPane {
                 + "-fx-border-color: #76518d;-fx-border-width: 1px;"
                 + "-fx-border-radius: 5px;-fx-background-radius: 5px;");
         return panel;
+    }
+
+    private String difficultyColorCss() {
+        Color color;
+        if (level <= 6) color = Color.web("#78e08f");
+        else if (level <= 10) color = Color.web("#a8e6a3");
+        else if (level <= 16) color = Color.web("#ffd166");
+        else if (level <= 20) color = Color.web("#f5bd54");
+        else if (level <= 30) color = Color.web("#ff9f43");
+        else if (level <= 40) color = Color.web("#ff5c64");
+        else color = Color.web("#c77dff");
+        return String.format("#%02X%02X%02X", (int) Math.round(color.getRed() * 255),
+                (int) Math.round(color.getGreen() * 255), (int) Math.round(color.getBlue() * 255));
     }
 
     private void styleHudTitle(Label title) {
@@ -515,24 +574,49 @@ public class GameScreen extends BorderPane {
         Label heading = new Label("FIELD NOTES");
         heading.setStyle("-fx-text-fill: #f4d58d;-fx-font-size: 14px;-fx-font-weight: bold;"
                 + "-fx-letter-spacing: 2px;");
-        Label subheading = new Label("HAUNTED HOUSE MAP");
+        HBox headingRow = new HBox(9, createFieldNotesIcon(), heading);
+        headingRow.setAlignment(Pos.CENTER_LEFT);
+        Label subheading = new Label(String.format("HAUNTED HOUSE   •   LEVEL %02d", level));
         subheading.setStyle("-fx-text-fill: #9e7cad;-fx-font-size: 9px;-fx-letter-spacing: 1.4px;");
         VBox map = createMiniMap();
+        Label objectiveHeading = new Label("CURRENT OBJECTIVE");
+        objectiveHeading.setStyle("-fx-text-fill: #f4d58d;-fx-font-size: 11px;-fx-font-weight: bold;"
+                + "-fx-letter-spacing: 1.2px;");
+        fieldNotesObjectiveLabel = new Label("FIND THE KEY");
+        fieldNotesObjectiveLabel.setStyle("-fx-text-fill: #f4d58d;-fx-font-size: 13px;"
+                + "-fx-font-weight: bold;-fx-letter-spacing: 0.8px;");
+        Circle objectiveIcon = new Circle(7, Color.TRANSPARENT);
+        objectiveIcon.setStroke(Color.web("#f4d58d"));
+        objectiveIcon.setStrokeWidth(1.5);
+        objectiveIcon.setEffect(new Glow(0.3));
+        HBox objectiveValue = new HBox(10, objectiveIcon, fieldNotesObjectiveLabel);
+        objectiveValue.setAlignment(Pos.CENTER_LEFT);
+        VBox objective = new VBox(8, objectiveHeading, objectiveValue);
+        objective.setPadding(new javafx.geometry.Insets(10, 11, 10, 11));
+        objective.setStyle("-fx-background-color: rgba(21, 11, 34, 0.92);"
+                + "-fx-border-color: #8c65a4;-fx-border-width: 1px;"
+                + "-fx-border-radius: 6px;-fx-background-radius: 6px;");
+
+        Label legendHeading = new Label("LEGEND");
+        legendHeading.setStyle("-fx-text-fill: #f4d58d;-fx-font-size: 12px;-fx-font-weight: bold;"
+                + "-fx-letter-spacing: 1.5px;");
         VBox legend = new VBox(
-                8,
-                createLegendRow("PLAYER",
-                        createLegendImage(playerFrames[0][0])),
-                createLegendRow("KEY", createKeyLegendIcon()),
-                createLegendRow("DOOR", createDoorLegendIcon(false)),
-                createLegendRow("EXIT", createDoorLegendIcon(true)),
+                3,
                 createLegendRow("WALL", createWallLegendIcon()),
-                createLegendRow("FLOOR", createFloorLegendIcon())
+                createLegendRow("FLOOR (EXPLORED)", createExploredFloorLegendIcon()),
+                createLegendRow("FLOOR (UNEXPLORED)", createUnexploredFloorLegendIcon()),
+                createLegendRow("PLAYER", createLegendImage(playerFrames[0][0], 1.4))
         );
-        legend.setPadding(new javafx.geometry.Insets(10, 0, 0, 0));
-        VBox panel = new VBox(8, heading, subheading, map, legend);
-        panel.setPrefWidth(190);
-        panel.setMaxWidth(190);
-        panel.setPadding(new javafx.geometry.Insets(18, 16, 18, 16));
+        VBox legendCard = new VBox(6, legendHeading, legend, createFieldNotesDivider());
+        legendCard.setPadding(new javafx.geometry.Insets(7, 10, 7, 10));
+        legendCard.setStyle("-fx-background-color: rgba(14, 8, 25, 0.88);"
+                + "-fx-border-color: #75528e;-fx-border-width: 1px;"
+                + "-fx-border-radius: 6px;-fx-background-radius: 6px;");
+        VBox panel = new VBox(6, headingRow, subheading, createFieldNotesDivider(), map, objective, legendCard);
+        panel.setPrefWidth(254);
+        panel.setMinWidth(254);
+        panel.setMaxWidth(254);
+        panel.setPadding(new javafx.geometry.Insets(8, 16, 8, 16));
         panel.setStyle("-fx-background-color: rgba(15, 7, 24, 0.96);"
                 + "-fx-border-color: #9d6cb7;-fx-border-width: 1px;"
                 + "-fx-border-radius: 10px;-fx-background-radius: 10px;");
@@ -542,12 +626,12 @@ public class GameScreen extends BorderPane {
 
     private VBox createMiniMap() {
         miniMapPane = new Pane();
-        miniMapPane.setPrefSize(156, 106);
-        miniMapPane.setMinSize(156, 106);
-        miniMapPane.setMaxSize(156, 106);
-        Rectangle miniMapClip = new Rectangle(156, 106);
+        miniMapPane.setPrefSize(220, 220);
+        miniMapPane.setMinSize(220, 220);
+        miniMapPane.setMaxSize(220, 220);
+        Rectangle miniMapClip = new Rectangle(220, 220);
         miniMapPane.setClip(miniMapClip);
-        miniMapPane.setStyle("-fx-background-color: #0b0611;-fx-border-color: #5c3474;-fx-border-width: 1px;");
+        miniMapPane.setStyle("-fx-background-color: #090611;-fx-border-color: #b08d57;-fx-border-width: 1.5px;");
         renderMiniMap();
         VBox wrapper = new VBox(miniMapPane);
         wrapper.setPadding(new javafx.geometry.Insets(8, 0, 0, 0));
@@ -556,11 +640,11 @@ public class GameScreen extends BorderPane {
 
     private void renderMiniMap() {
         miniMapPane.getChildren().clear();
-        double cellSize = Math.min(150.0 / columns, 100.0 / rows);
+        double cellSize = Math.min(216.0 / columns, 216.0 / rows);
         double mapWidth = columns * cellSize;
         double mapHeight = rows * cellSize;
-        double offsetX = (156 - mapWidth) / 2;
-        double offsetY = (106 - mapHeight) / 2;
+        double offsetX = (220 - mapWidth) / 2;
+        double offsetY = (220 - mapHeight) / 2;
 
         for (int row = 0; row < rows; row++) {
             for (int column = 0; column < columns; column++) {
@@ -568,23 +652,20 @@ public class GameScreen extends BorderPane {
                 tile.setLayoutX(offsetX + column * cellSize);
                 tile.setLayoutY(offsetY + row * cellSize);
                 boolean wall = maze.isWall(row, column);
-                tile.setFill(wall ? Color.web("#4a285d") : Color.web("#17101e"));
-                tile.setStroke(wall ? Color.web("#9b6bb5") : Color.web("#352941"));
+                tile.setFill(wall ? Color.web("#694783") : Color.web("#292333"));
+                tile.setStroke(wall ? Color.web("#a77bc4") : Color.web("#44394f"));
                 tile.setStrokeWidth(Math.max(0.35, cellSize * 0.06));
                 miniMapPane.getChildren().add(tile);
             }
         }
 
-        miniMapFogLayer = new Group();
+        miniMapFogLayer = new Canvas(220, 220);
         miniMapFogLayer.setMouseTransparent(true);
+        miniMapExplored = new boolean[rows][columns];
         miniMapPane.getChildren().add(miniMapFogLayer);
 
         miniMapPlayer = createMiniMapImage(playerFrames[0][0]);
-        miniMapKey = createMiniMapImage(loadImage("/img/tiles/key.png"));
-        miniMapClosedDoorImage = loadImage("/img/tiles/door.png");
-        miniMapOpenDoorImage = loadImage("/img/tiles/door.png");
-        miniMapExit = createMiniMapImage(miniMapClosedDoorImage);
-        miniMapPane.getChildren().addAll(miniMapPlayer, miniMapKey, miniMapExit);
+        miniMapPane.getChildren().add(miniMapPlayer);
         updateMiniMapMarkers(offsetX, offsetY, cellSize);
     }
 
@@ -600,22 +681,11 @@ public class GameScreen extends BorderPane {
         if (miniMapPane == null) {
             return;
         }
-        double markerSize = Math.max(8, cellSize * 0.9);
+        double markerSize = Math.max(9, cellSize * 1.15);
         miniMapPlayer.setFitWidth(markerSize);
         miniMapPlayer.setFitHeight(markerSize);
-        miniMapKey.setFitWidth(markerSize);
-        miniMapKey.setFitHeight(markerSize);
-        miniMapExit.setFitWidth(markerSize);
-        miniMapExit.setFitHeight(markerSize);
         miniMapPlayer.setLayoutX(offsetX + (player.getX() / TILE_SIZE + 0.5) * cellSize - markerSize / 2);
         miniMapPlayer.setLayoutY(offsetY + (player.getY() / TILE_SIZE + 0.5) * cellSize - markerSize / 2);
-        miniMapKey.setLayoutX(offsetX + (key.getX() / TILE_SIZE + 0.5) * cellSize - markerSize / 2);
-        miniMapKey.setLayoutY(offsetY + (key.getY() / TILE_SIZE + 0.5) * cellSize - markerSize / 2);
-        miniMapKey.setVisible(!key.isCollected());
-        miniMapExit.setImage(exit.isActive() ? miniMapOpenDoorImage : miniMapClosedDoorImage);
-        miniMapExit.setLayoutX(offsetX + (exit.getX() / TILE_SIZE + 0.5) * cellSize - markerSize / 2);
-        miniMapExit.setLayoutY(offsetY + (exit.getY() / TILE_SIZE + 0.5) * cellSize - markerSize / 2);
-        miniMapExit.setVisible(true);
         updateMiniMapFog(offsetX, offsetY, cellSize);
     }
 
@@ -623,85 +693,100 @@ public class GameScreen extends BorderPane {
         if (miniMapFogLayer == null) {
             return;
         }
-
-        double centerX = offsetX + (player.getX() / TILE_SIZE + 0.5) * cellSize;
-        double centerY = offsetY + (player.getY() / TILE_SIZE + 0.5) * cellSize;
-        double sightRadius = getSightRadius() / TILE_SIZE * cellSize;
-        double feather = SIGHT_EDGE_FEATHER / TILE_SIZE * cellSize;
-        double outerRadius = sightRadius + feather;
-
-        if (miniMapFogLayer.getChildren().isEmpty()) {
-            double extent = 156 + 106 + outerRadius * 2;
-            Shape fog = Shape.subtract(
-                    new Rectangle(-extent, -extent, extent * 3, extent * 3),
-                    new Circle(0, 0, outerRadius)
-            );
-            fog.setFill(FOG_COLOR.deriveColor(0, 1, 1, FOG_OPACITY));
-
-            Shape featheredEdge = Shape.subtract(
-                    new Circle(0, 0, outerRadius),
-                    new Circle(0, 0, sightRadius)
-            );
-            featheredEdge.setFill(new RadialGradient(
-                    0,
-                    0,
-                    0,
-                    0,
-                    outerRadius,
-                    false,
-                    CycleMethod.NO_CYCLE,
-                    new Stop(sightRadius / outerRadius, Color.TRANSPARENT),
-                    new Stop(0.9, FOG_COLOR.deriveColor(0, 1, 1, 0.42)),
-                    new Stop(1, FOG_COLOR.deriveColor(0, 1, 1, FOG_OPACITY))
-            ));
-            miniMapFogLayer.getChildren().setAll(fog, featheredEdge);
+        int playerRow = Math.max(0, Math.min(rows - 1, (int) (player.getY() / TILE_SIZE)));
+        int playerColumn = Math.max(0, Math.min(columns - 1, (int) (player.getX() / TILE_SIZE)));
+        if (playerRow == lastMiniMapPlayerRow && playerColumn == lastMiniMapPlayerColumn) {
+            return;
         }
+        lastMiniMapPlayerRow = playerRow;
+        lastMiniMapPlayerColumn = playerColumn;
 
-        miniMapFogLayer.setTranslateX(centerX);
-        miniMapFogLayer.setTranslateY(centerY);
-        miniMapFogLayer.toFront();
+        double centerX = offsetX + (player.getX() + player.getWidth() / 2) / TILE_SIZE * cellSize;
+        double centerY = offsetY + (player.getY() + player.getHeight() / 2) / TILE_SIZE * cellSize;
+        double sightRadius = getSightRadius() / TILE_SIZE * cellSize;
+        GraphicsContext graphics = miniMapFogLayer.getGraphicsContext2D();
+        graphics.clearRect(0, 0, miniMapFogLayer.getWidth(), miniMapFogLayer.getHeight());
+
+        for (int row = 0; row < rows; row++) {
+            for (int column = 0; column < columns; column++) {
+                double tileX = offsetX + (column + 0.5) * cellSize;
+                double tileY = offsetY + (row + 0.5) * cellSize;
+                boolean currentlyVisible = Math.hypot(tileX - centerX, tileY - centerY) <= sightRadius;
+                if (currentlyVisible) {
+                    miniMapExplored[row][column] = true;
+                } else if (miniMapExplored[row][column]) {
+                    graphics.setFill(Color.rgb(5, 4, 9, 0.48));
+                    graphics.fillRect(offsetX + column * cellSize, offsetY + row * cellSize,
+                            cellSize + 0.25, cellSize + 0.25);
+                } else {
+                    graphics.setFill(Color.rgb(3, 2, 6, 0.91));
+                    graphics.fillRect(offsetX + column * cellSize, offsetY + row * cellSize,
+                            cellSize + 0.25, cellSize + 0.25);
+                }
+            }
+        }
         miniMapPlayer.toFront();
     }
 
     private void updateMiniMapMarkers() {
-        double cellSize = Math.min(150.0 / columns, 100.0 / rows);
+        double cellSize = Math.min(216.0 / columns, 216.0 / rows);
         updateMiniMapMarkers(
-                (156 - columns * cellSize) / 2,
-                (106 - rows * cellSize) / 2,
+                (220 - columns * cellSize) / 2,
+                (220 - rows * cellSize) / 2,
                 cellSize);
     }
 
     private HBox createLegendRow(String label, Node icon) {
         Label text = new Label(label);
-        text.setStyle("-fx-text-fill: #d7c4df;-fx-font-size: 11px;-fx-font-weight: bold;"
-                + "-fx-letter-spacing: 0.8px;");
-        HBox row = new HBox(10, icon, text);
+        text.setStyle("-fx-text-fill: #c9b8d4;-fx-font-size: 9px;-fx-font-weight: bold;"
+                + "-fx-letter-spacing: 0.45px;");
+        HBox row = new HBox(8, icon, text);
         row.setAlignment(Pos.CENTER_LEFT);
         return row;
     }
 
+    private Node createFieldNotesIcon() {
+        Group icon = new Group();
+        Rectangle page = new Rectangle(3, 2, 17, 20);
+        page.setArcWidth(3);
+        page.setArcHeight(3);
+        page.setFill(Color.web("#21132f"));
+        page.setStroke(Color.web("#f4d58d"));
+        page.setStrokeWidth(1.3);
+        Line binding = new Line(7, 2, 7, 22);
+        binding.setStroke(Color.web("#b48acb"));
+        Line lineOne = new Line(10, 8, 17, 8);
+        Line lineTwo = new Line(10, 12, 17, 12);
+        Line lineThree = new Line(10, 16, 15, 16);
+        for (Line line : List.of(lineOne, lineTwo, lineThree)) {
+            line.setStroke(Color.web("#c9b8d4"));
+            line.setStrokeWidth(1);
+        }
+        icon.getChildren().addAll(page, binding, lineOne, lineTwo, lineThree);
+        return icon;
+    }
+
+    private Region createFieldNotesDivider() {
+        Region divider = new Region();
+        divider.setPrefHeight(1);
+        divider.setMinHeight(1);
+        divider.setMaxHeight(1);
+        divider.setStyle("-fx-background-color: linear-gradient(to right, #6d477f, #b08d57, #6d477f);");
+        return divider;
+    }
+
     private ImageView createLegendImage(Image image) {
+        return createLegendImage(image, 1.0);
+    }
+
+    private ImageView createLegendImage(Image image, double scale) {
         ImageView imageView = new ImageView(image);
-        imageView.setFitWidth(24);
-        imageView.setFitHeight(24);
+        imageView.setFitWidth(24 * scale);
+        imageView.setFitHeight(24 * scale);
         imageView.setPreserveRatio(true);
         imageView.setSmooth(true);
         imageView.setEffect(new Glow(0.35));
         return imageView;
-    }
-
-    private Node createKeyLegendIcon() {
-        Group keyIcon = createKeyVisual();
-        keyIcon.setScaleX(0.9);
-        keyIcon.setScaleY(0.9);
-        return keyIcon;
-    }
-
-    private Node createDoorLegendIcon(boolean open) {
-        Group doorIcon = createExitVisual(open);
-        doorIcon.setScaleX(0.62);
-        doorIcon.setScaleY(0.62);
-        return doorIcon;
     }
 
     private Rectangle createWallLegendIcon() {
@@ -717,12 +802,16 @@ public class GameScreen extends BorderPane {
         return wall;
     }
 
-    private Rectangle createFloorLegendIcon() {
-        Rectangle floor = new Rectangle(24, 20);
-        floor.setFill(new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.web("#201724").brighter()),
-                new Stop(1, Color.web("#19121d").darker())));
-        floor.setStroke(Color.web("#3d2b42"));
+    private Rectangle createExploredFloorLegendIcon() {
+        Rectangle floor = new Rectangle(24, 20, Color.web("#292333"));
+        floor.setStroke(Color.web("#6b5a79"));
+        floor.setStrokeWidth(1.2);
+        return floor;
+    }
+
+    private Rectangle createUnexploredFloorLegendIcon() {
+        Rectangle floor = new Rectangle(24, 20, Color.web("#07050c"));
+        floor.setStroke(Color.web("#44394f"));
         floor.setStrokeWidth(1.2);
         return floor;
     }
@@ -824,7 +913,7 @@ public class GameScreen extends BorderPane {
                         0,
                         1,
                         1,
-                        FOG_OPACITY
+                        getFogOpacity()
             ));
 
             Shape featheredEdge = Shape.subtract(
@@ -840,8 +929,8 @@ public class GameScreen extends BorderPane {
                     false,
                     CycleMethod.NO_CYCLE,
                     new Stop(sightRadius / outerRadius, Color.TRANSPARENT),
-                    new Stop(0.9, FOG_COLOR.deriveColor(0, 1, 1, 0.42)),
-                    new Stop(1, FOG_COLOR.deriveColor(0, 1, 1, FOG_OPACITY))
+                    new Stop(0.9, FOG_COLOR.deriveColor(0, 1, 1, getFogOpacity() * 0.55)),
+                    new Stop(1, FOG_COLOR.deriveColor(0, 1, 1, getFogOpacity()))
             ));
             fogLayer.getChildren().setAll(fogWithSightOpening, featheredEdge);
         }
@@ -853,6 +942,11 @@ public class GameScreen extends BorderPane {
     private double getSightRadius() {
         return Math.max(MIN_SIGHT_RADIUS,
                 BASE_SIGHT_RADIUS - (level - 1) * SIGHT_RADIUS_DECREASE_PER_LEVEL);
+    }
+
+    private double getFogOpacity() {
+        double levelProgress = (Math.max(1, Math.min(50, level)) - 1) / 49.0;
+        return LIGHT_FOG_OPACITY + (HEAVY_FOG_OPACITY - LIGHT_FOG_OPACITY) * levelProgress;
     }
 
     private LinearGradient hauntedWallPaint(int row, int column) {
@@ -1171,6 +1265,12 @@ public class GameScreen extends BorderPane {
     private void updateHUD() {
         timerLabel.setText("TIME: " + timerManager.getFormattedTime());
         timerLabel.setVisible(screenManager.getSettingsManager().isShowTimer());
+        if (fieldNotesObjectiveLabel != null) {
+            boolean hasKey = key.isCollected();
+            fieldNotesObjectiveLabel.setText(hasKey ? "REACH THE EXIT" : "FIND THE KEY");
+            fieldNotesObjectiveLabel.setTextFill(hasKey
+                    ? Color.web("#79f2c0") : Color.web("#f4d58d"));
+        }
         livesLabel.setText(createLivesText());
         scoreManager.calculateLevelScore(
                 timerManager.getRemainingSeconds(),

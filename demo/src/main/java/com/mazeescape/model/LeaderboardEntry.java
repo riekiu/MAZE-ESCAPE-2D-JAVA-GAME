@@ -19,7 +19,7 @@ public class LeaderboardEntry {
     ) {
         this.playerName = playerName;
         this.score = Math.max(0, score);
-        this.level = Math.max(1, Math.min(20, level));
+        this.level = Math.max(1, Math.min(50, level));
     }
 
     // =========================
@@ -67,7 +67,7 @@ public class LeaderboardEntry {
     public void setLevel(int level) {
         this.level = Math.max(
                 1,
-                Math.min(20, level)
+                Math.min(50, level)
         );
     }
 }

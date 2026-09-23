@@ -10,7 +10,7 @@ import java.util.Map;
 
 public class LeaderboardManager {
 
-    private static final int TOTAL_LEVELS = 20;
+    private static final int TOTAL_LEVELS = GameManager.TOTAL_LEVELS;
 
     private final Map<Integer, LeaderboardEntry> entries;
 

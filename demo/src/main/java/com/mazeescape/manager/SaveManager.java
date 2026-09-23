@@ -51,7 +51,7 @@ public class SaveManager {
     }
 
     public void saveLeaderboard(LeaderboardManager leaderboardManager) {
-        for (int level = 1; level <= 20; level++) {
+        for (int level = 1; level <= GameManager.TOTAL_LEVELS; level++) {
             properties.remove("bestTime." + level);
             int bestTime = leaderboardManager.getBestTime(level);
             if (bestTime >= 0) {
@@ -79,7 +79,7 @@ public class SaveManager {
 
     public void loadLeaderboard(LeaderboardManager leaderboardManager) {
         leaderboardManager.clearLeaderboard();
-        for (int level = 1; level <= 20; level++) {
+        for (int level = 1; level <= GameManager.TOTAL_LEVELS; level++) {
             int bestTime = getInt("bestTime." + level, -1);
             if (bestTime >= 0) {
                 leaderboardManager.setBestTime(level, bestTime);

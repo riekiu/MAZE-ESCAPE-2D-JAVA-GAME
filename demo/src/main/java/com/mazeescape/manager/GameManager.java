@@ -3,7 +3,7 @@ package com.mazeescape.manager;
 public class GameManager {
 
     // Total number of levels in the game
-    private static final int TOTAL_LEVELS = 20;
+    public static final int TOTAL_LEVELS = 50;
 
     // Current game state
     private int currentLevel;

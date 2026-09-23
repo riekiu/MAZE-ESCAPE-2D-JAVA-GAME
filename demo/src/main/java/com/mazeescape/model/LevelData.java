@@ -19,9 +19,9 @@ public class LevelData {
     // =========================
     public LevelData(int levelNumber) {
 
-        if (levelNumber < 1 || levelNumber > 20) {
+        if (levelNumber < 1 || levelNumber > 50) {
             throw new IllegalArgumentException(
-                    "Level must be between 1 and 20."
+                    "Level must be between 1 and 50."
             );
         }
 
@@ -52,7 +52,12 @@ public class LevelData {
         if (level <= 17) {
             return 150;
         }
-        return 180;
+        if (level <= 20) {
+            return 180;
+        }
+        // Nightmare levels continue gaining 30 seconds for each five-level band.
+        int nightmareBand = (level - 21) / 5;
+        return 210 + nightmareBand * 30;
     }
 
     // =========================
@@ -108,16 +113,19 @@ public class LevelData {
     }
 
     public String getDifficulty() {
-        if (levelNumber <= 5) return "EASY";
-        if (levelNumber <= 10) return "NORMAL";
-        if (levelNumber <= 15) return "HARD";
-        return "NIGHTMARE";
+        if (levelNumber <= 6) return "Easy";
+        if (levelNumber <= 10) return "Easy–Medium";
+        if (levelNumber <= 16) return "Medium";
+        if (levelNumber <= 20) return "Medium–Hard";
+        if (levelNumber <= 30) return "Hard";
+        if (levelNumber <= 40) return "Very Hard";
+        return "Extreme";
     }
 
     // =========================
     // FINAL LEVEL CHECK
     // =========================
     public boolean isFinalLevel() {
-        return levelNumber == 20;
+        return levelNumber == 50;
     }
 }

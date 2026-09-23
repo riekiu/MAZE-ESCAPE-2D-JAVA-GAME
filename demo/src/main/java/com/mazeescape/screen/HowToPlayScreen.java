@@ -35,17 +35,20 @@ public class HowToPlayScreen extends StackPane {
                 createSection("1. STARTING THE GAME",
                         "PLAY loads the saved current level and keeps the saved score, lives, and "
                                 + "progress. CAMPAIGN lets you choose an unlocked level. Starting a selected "
-                                + "level resets that level's lives to 3. The game contains 20 levels."),
+                                + "level resets that level's lives to 3. The game contains 50 levels."),
                 createSection("2. LEVEL SETUP",
                         "Each level creates a square grid using: grid size = 8 + level number. "
-                                + "That produces Level 1 at 9x9 and Level 20 at 28x28. The maze is carved "
+                                + "That produces Level 1 at 9x9 and Level 50 at 58x58. The maze is carved "
                                 + "from walls into connected floor paths using a deterministic seed: "
                                 + "0x5EED + (level number x 7919). The same level therefore recreates "
                                 + "the same maze layout."),
                 createSection("3. DIFFICULTY AND TIME LIMITS",
-                        "Levels 1-5 are EASY with 60 seconds. Levels 6-8 are NORMAL with 90 seconds. "
-                                + "Levels 9-13 are HARD with 120 seconds. Levels 14-17 are NIGHTMARE "
-                                + "with 150 seconds. Levels 18-20 are NIGHTMARE with 180 seconds. "
+                        "Difficulty bands: 1-6 Easy, 7-10 Easy-Medium, 11-16 Medium, "
+                                + "17-20 Medium-Hard, 21-30 Hard, 31-40 Very Hard, and 41-50 Extreme. "
+                                + "Time limits continue scaling for larger mazes: 1-5 have 60 seconds, "
+                                + "6-8 have 90, 9-13 have 120, 14-17 have 150, and 18-20 have 180. "
+                                + "From Level 21 onward, the limit increases by 30 seconds every five levels, "
+                                + "reaching 360 seconds on Level 50. "
                                 + "Every level starts with 3 lives."),
                 createSection("4. CONTROLS",
                         "W / A / S / D or ARROW KEYS: move.\n"
