@@ -76,6 +76,7 @@ public class GameScreen extends BorderPane {
     private static final double SIGHT_RADIUS_DECREASE_PER_LEVEL = 5;
     private static final double MIN_SIGHT_RADIUS = 70;
     private static final double SIGHT_EDGE_FEATHER = 45;
+    private static final int[][] MAZE_DIRECTIONS = {{0, 2}, {0, -2}, {2, 0}, {-2, 0}};
 
     private final ScreenManager screenManager;
     private final Player player = new Player(TILE_SIZE + 4, TILE_SIZE + 4);
@@ -188,13 +189,17 @@ public class GameScreen extends BorderPane {
         }
         Random random = new Random(levelData.getGenerationSeed());
         List<int[]> stack = new ArrayList<>();
+        List<int[]> directions = new ArrayList<>(List.of(
+                MAZE_DIRECTIONS[0], MAZE_DIRECTIONS[1], MAZE_DIRECTIONS[2], MAZE_DIRECTIONS[3]));
         stack.add(new int[]{1, 1});
         walls[1][1] = false;
         while (!stack.isEmpty()) {
             int[] current = stack.get(stack.size() - 1);
-            List<int[]> directions = new ArrayList<>(List.of(
-                    new int[]{0, 2}, new int[]{0, -2},
-                    new int[]{2, 0}, new int[]{-2, 0}));
+            // Restore the original order before shuffling so the seeded maze and
+            // random-number sequence remain identical without per-step allocations.
+            for (int index = 0; index < MAZE_DIRECTIONS.length; index++) {
+                directions.set(index, MAZE_DIRECTIONS[index]);
+            }
             Collections.shuffle(directions, random);
             boolean carved = false;
             for (int[] direction : directions) {
@@ -605,6 +610,7 @@ public class GameScreen extends BorderPane {
                 createLegendRow("WALL", createWallLegendIcon()),
                 createLegendRow("FLOOR (EXPLORED)", createExploredFloorLegendIcon()),
                 createLegendRow("FLOOR (UNEXPLORED)", createUnexploredFloorLegendIcon()),
+                createLegendRow("KEY", createHudIcon("key")),
                 createLegendRow("PLAYER", createLegendImage(playerFrames[0][0], 1.4))
         );
         VBox legendCard = new VBox(6, legendHeading, legend, createFieldNotesDivider());
@@ -639,25 +645,27 @@ public class GameScreen extends BorderPane {
     }
 
     private void renderMiniMap() {
-        miniMapPane.getChildren().clear();
         double cellSize = Math.min(216.0 / columns, 216.0 / rows);
         double mapWidth = columns * cellSize;
         double mapHeight = rows * cellSize;
         double offsetX = (220 - mapWidth) / 2;
         double offsetY = (220 - mapHeight) / 2;
 
+        Canvas mapTiles = new Canvas(220, 220);
+        GraphicsContext mapGraphics = mapTiles.getGraphicsContext2D();
         for (int row = 0; row < rows; row++) {
             for (int column = 0; column < columns; column++) {
-                Rectangle tile = new Rectangle(cellSize, cellSize);
-                tile.setLayoutX(offsetX + column * cellSize);
-                tile.setLayoutY(offsetY + row * cellSize);
                 boolean wall = maze.isWall(row, column);
-                tile.setFill(wall ? Color.web("#694783") : Color.web("#292333"));
-                tile.setStroke(wall ? Color.web("#a77bc4") : Color.web("#44394f"));
-                tile.setStrokeWidth(Math.max(0.35, cellSize * 0.06));
-                miniMapPane.getChildren().add(tile);
+                mapGraphics.setFill(wall ? Color.web("#694783") : Color.web("#292333"));
+                mapGraphics.fillRect(offsetX + column * cellSize, offsetY + row * cellSize,
+                        cellSize, cellSize);
+                mapGraphics.setStroke(wall ? Color.web("#a77bc4") : Color.web("#44394f"));
+                mapGraphics.setLineWidth(Math.max(0.35, cellSize * 0.06));
+                mapGraphics.strokeRect(offsetX + column * cellSize, offsetY + row * cellSize,
+                        cellSize, cellSize);
             }
         }
+        miniMapPane.getChildren().setAll(mapTiles);
 
         miniMapFogLayer = new Canvas(220, 220);
         miniMapFogLayer.setMouseTransparent(true);
@@ -850,23 +858,27 @@ public class GameScreen extends BorderPane {
     }
 
     private void createMazeVisuals() {
+        Canvas mazeTiles = new Canvas(columns * TILE_SIZE, rows * TILE_SIZE);
+        GraphicsContext graphics = mazeTiles.getGraphicsContext2D();
         for (int row = 0; row < rows; row++) {
             for (int column = 0; column < columns; column++) {
-                Rectangle tile = new Rectangle(TILE_SIZE, TILE_SIZE);
-                tile.setLayoutX(column * TILE_SIZE);
-                tile.setLayoutY(row * TILE_SIZE);
                 boolean wall = maze.isWall(row, column);
-                tile.setFill(wall ? hauntedWallPaint(row, column) : hauntedFloorPaint(row, column));
-                tile.setStroke(wall ? Color.web("#9b6bb5") : Color.web("#352941"));
-                tile.setStrokeWidth(wall ? 2 : 1);
+                double x = column * TILE_SIZE;
+                double y = row * TILE_SIZE;
+                graphics.setFill(wall ? hauntedWallPaint(x, y) : hauntedFloorPaint(row, column, x, y));
+                graphics.fillRoundRect(x, y, TILE_SIZE, TILE_SIZE,
+                        wall ? 6 : 0, wall ? 6 : 0);
+                graphics.setStroke(wall ? Color.web("#9b6bb5") : Color.web("#352941"));
+                graphics.setLineWidth(wall ? 2 : 1);
                 if (wall) {
-                    tile.setArcWidth(6);
-                    tile.setArcHeight(6);
+                    graphics.strokeRoundRect(x, y, TILE_SIZE, TILE_SIZE, 6, 6);
+                } else {
+                    graphics.setStroke(Color.web("#3d2b42"));
+                    graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
                 }
-                addTileDetail(tile, row, column, wall);
-                mazePane.getChildren().add(tile);
             }
         }
+        mazePane.getChildren().add(mazeTiles);
 
         fogLayer = new Group();
         fogLayer.setMouseTransparent(true);
@@ -949,17 +961,17 @@ public class GameScreen extends BorderPane {
         return LIGHT_FOG_OPACITY + (HEAVY_FOG_OPACITY - LIGHT_FOG_OPACITY) * levelProgress;
     }
 
-    private LinearGradient hauntedWallPaint(int row, int column) {
-        return new LinearGradient(0, 0, 1, 1, true, CycleMethod.NO_CYCLE,
+    private LinearGradient hauntedWallPaint(double x, double y) {
+        return new LinearGradient(x, y, x + TILE_SIZE, y + TILE_SIZE, false, CycleMethod.NO_CYCLE,
                 new Stop(0, Color.web("#4a285d")),
                 new Stop(0.45, Color.web("#24152f")),
                 new Stop(1, Color.web("#120b1b")));
     }
 
-    private LinearGradient hauntedFloorPaint(int row, int column) {
+    private LinearGradient hauntedFloorPaint(int row, int column, double x, double y) {
         Color base = ((row + column) & 1) == 0
                 ? Color.web("#201724") : Color.web("#19121d");
-        return new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
+        return new LinearGradient(x, y, x, y + TILE_SIZE, false, CycleMethod.NO_CYCLE,
                 new Stop(0, base.brighter()),
                 new Stop(1, base.darker()));
     }
