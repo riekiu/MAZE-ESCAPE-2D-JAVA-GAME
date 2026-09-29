@@ -2,7 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/MazeEscape.iml" filepath="$PROJECT_DIR$/.idea/MazeEscape.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/DISORIENT.iml" filepath="$PROJECT_DIR$/.idea/DISORIENT.iml" />
+      <module fileurl="file://$PROJECT_DIR$/demo/Disorient.iml" filepath="$PROJECT_DIR$/demo/Disorient.iml" />
     </modules>
   </component>
 </project>

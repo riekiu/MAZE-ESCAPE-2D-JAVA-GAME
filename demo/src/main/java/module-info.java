@@ -1,4 +1,4 @@
-module com.mazeescape {
+module com.disorient {
     requires javafx.controls;
     requires javafx.fxml;
     requires javafx.media;
@@ -6,11 +6,11 @@ module com.mazeescape {
     requires static org.junit.jupiter.api;
     requires static org.junit.platform.commons;
 
-    exports com.mazeescape;
-    exports com.mazeescape.controller;
-    exports com.mazeescape.manager;
-    exports com.mazeescape.model;
-    exports com.mazeescape.screen;
+    exports com.disorient;
+    exports com.disorient.controller;
+    exports com.disorient.manager;
+    exports com.disorient.model;
+    exports com.disorient.screen;
 
-    opens com.mazeescape to org.junit.platform.commons;
+    opens com.disorient to org.junit.platform.commons;
 }

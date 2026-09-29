@@ -6,7 +6,8 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="MazeEscape" />
+        <module name="Disorient" />
+        <module name="Disorient" />
       </profile>
     </annotationProcessing>
   </component>
