@@ -6,6 +6,7 @@ import com.disorient.manager.ScreenManager;
 import com.disorient.manager.ScoreManager;
 import com.disorient.manager.TimerManager;
 import com.disorient.model.Exit;
+import com.disorient.model.CampaignMap;
 import com.disorient.model.Key;
 import com.disorient.model.LevelData;
 import com.disorient.model.Maze;
@@ -86,6 +87,7 @@ public class GameScreen extends BorderPane {
     private static final Pattern SVG_PATH_DATA = Pattern.compile("<path\\b[^>]*\\bd=\"([^\"]+)\"");
 
     private final ScreenManager screenManager;
+    private final CampaignMap campaignMap;
     private final Player player = new Player(TILE_SIZE + 4, TILE_SIZE + 4);
     private final LevelData levelData;
     private final Key key;
@@ -153,6 +155,7 @@ public class GameScreen extends BorderPane {
     private PauseMenu pauseMenu;
     private GameSettingsScreen gameSettingsOverlay;
     private double animationTime;
+    private double worldTime;
     private double walkingAnimationTime;
     private double footstepDistance;
     private boolean playerMoving;
@@ -179,11 +182,16 @@ public class GameScreen extends BorderPane {
     }
 
     public GameScreen(int level, ScreenManager screenManager) {
+        this(level, screenManager, CampaignMap.MANSION);
+    }
+
+    public GameScreen(int level, ScreenManager screenManager, CampaignMap campaignMap) {
         this.level = level;
         this.screenManager = screenManager;
+        this.campaignMap = campaignMap;
         this.levelData = new LevelData(level);
-        this.rows = levelData.getGridSize();
-        this.columns = levelData.getGridSize();
+        this.rows = campaignMap.getGridHeight(levelData);
+        this.columns = campaignMap.getGridWidth(levelData);
         generateMaze();
         int[] keyPosition = findRandomKeyFloor(1, 1);
         this.key = new Key(TILE_SIZE * keyPosition[1] + 20,
@@ -211,7 +219,8 @@ public class GameScreen extends BorderPane {
         for (int row = 0; row < rows; row++) {
             java.util.Arrays.fill(walls[row], true);
         }
-        Random random = new Random(levelData.getGenerationSeed() + mazeLayoutIndex * 104729L);
+        Random random = new Random(levelData.getGenerationSeed()
+                + campaignMap.getMazeSeedOffset() + mazeLayoutIndex * 104729L);
         List<int[]> stack = new ArrayList<>();
         List<int[]> directions = new ArrayList<>(List.of(
                 MAZE_DIRECTIONS[0], MAZE_DIRECTIONS[1], MAZE_DIRECTIONS[2], MAZE_DIRECTIONS[3]));
@@ -259,6 +268,60 @@ public class GameScreen extends BorderPane {
                         ? Tile.Type.WALL : Tile.Type.FLOOR);
             }
         }
+        placeThemeObstacles();
+    }
+
+    private void placeThemeObstacles() {
+        if (campaignMap == CampaignMap.MANSION) {
+            return;
+        }
+        int maximum = campaignMap == CampaignMap.CEMETERY ? 2 : 3;
+        int placed = 0;
+        List<int[]> candidates = new ArrayList<>();
+        for (int row = 2; row < rows - 2; row++) {
+            for (int column = 2; column < columns - 2; column++) {
+                if (!maze.isWall(row, column)) {
+                    candidates.add(new int[]{row, column});
+                }
+            }
+        }
+        Collections.shuffle(candidates, new Random(
+                levelData.getGenerationSeed() + campaignMap.getMazeSeedOffset()));
+        for (int[] candidate : candidates) {
+            if (placed >= maximum) {
+                break;
+            }
+            maze.setTile(candidate[0], candidate[1], Tile.Type.OBSTACLE);
+            if (isFloorRouteAvailable(1, 1, rows - 2, columns - 2)) {
+                placed++;
+            } else {
+                maze.setTile(candidate[0], candidate[1], Tile.Type.FLOOR);
+            }
+        }
+    }
+
+    private boolean isFloorRouteAvailable(int startRow, int startColumn, int endRow, int endColumn) {
+        boolean[][] visited = new boolean[rows][columns];
+        List<int[]> queue = new ArrayList<>();
+        queue.add(new int[]{startRow, startColumn});
+        visited[startRow][startColumn] = true;
+        for (int index = 0; index < queue.size(); index++) {
+            int[] current = queue.get(index);
+            if (current[0] == endRow && current[1] == endColumn) {
+                return true;
+            }
+            for (int[] direction : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                int nextRow = current[0] + direction[0];
+                int nextColumn = current[1] + direction[1];
+                if (maze.isValidPosition(nextRow, nextColumn)
+                        && !visited[nextRow][nextColumn]
+                        && !maze.isWall(nextRow, nextColumn)) {
+                    visited[nextRow][nextColumn] = true;
+                    queue.add(new int[]{nextRow, nextColumn});
+                }
+            }
+        }
+        return false;
     }
 
     /** Opens selected interior dividers in the spanning-tree maze to create loops. */
@@ -279,6 +342,11 @@ public class GameScreen extends BorderPane {
 
         Collections.shuffle(possibleOpenings, random);
         double loopRate = 0.18 + 0.004 * (Math.max(1, Math.min(50, level)) - 1);
+        if (campaignMap == CampaignMap.CEMETERY) {
+            loopRate += 0.04;
+        } else if (campaignMap == CampaignMap.HOSPITAL) {
+            loopRate += 0.12;
+        }
         int openings = (int) Math.round(possibleOpenings.size() * loopRate);
         for (int index = 0; index < openings; index++) {
             int[] opening = possibleOpenings.get(index);
@@ -408,8 +476,8 @@ public class GameScreen extends BorderPane {
 
     private void createInterface() {
         configureGameBackground();
-        Label levelLabel = new Label(String.format("LEVEL %02d  •  %s  •  %dx%d",
-                level, levelData.getDifficulty(), rows, columns));
+        Label levelLabel = new Label(String.format("%s  •  LEVEL %02d  •  %d x %d",
+                campaignMap.getDisplayName().toUpperCase(), level, columns, rows));
         timerLabel = new Label();
         livesLabel = new Label();
         scoreLabel = new Label();
@@ -605,7 +673,8 @@ public class GameScreen extends BorderPane {
                 + "-fx-letter-spacing: 2px;");
         HBox headingRow = new HBox(9, createFieldNotesIcon(), heading);
         headingRow.setAlignment(Pos.CENTER_LEFT);
-        Label subheading = new Label(String.format("HAUNTED HOUSE   •   LEVEL %02d", level));
+        Label subheading = new Label(String.format("%s   •   LEVEL %02d",
+                campaignMap.getDisplayName().toUpperCase(), level));
         subheading.setStyle("-fx-text-fill: #9e7cad;-fx-font-size: 9px;-fx-letter-spacing: 1.4px;");
         VBox map = createMiniMap();
         Label objectiveHeading = new Label("CURRENT OBJECTIVE");
@@ -629,14 +698,7 @@ public class GameScreen extends BorderPane {
         Label legendHeading = new Label("LEGEND");
         legendHeading.setStyle("-fx-text-fill: #f4d58d;-fx-font-size: 12px;-fx-font-weight: bold;"
                 + "-fx-letter-spacing: 1.5px;");
-        VBox legend = new VBox(
-                3,
-                createLegendRow("WALL", createWallLegendIcon()),
-                createLegendRow("FLOOR (EXPLORED)", createExploredFloorLegendIcon()),
-                createLegendRow("FLOOR (UNEXPLORED)", createUnexploredFloorLegendIcon()),
-                createLegendRow("KEY", createHudIcon("key")),
-                createLegendRow("PLAYER", createLegendImage(playerIdleFrames[0], 1.4))
-        );
+        VBox legend = createMapLegend();
         VBox legendCard = new VBox(6, legendHeading, legend, createFieldNotesDivider());
         legendCard.setPadding(new javafx.geometry.Insets(7, 10, 7, 10));
         legendCard.setStyle("-fx-background-color: rgba(14, 8, 25, 0.88);"
@@ -652,6 +714,158 @@ public class GameScreen extends BorderPane {
                 + "-fx-border-radius: 10px;-fx-background-radius: 10px;");
         panel.setEffect(new DropShadow(20, Color.rgb(105, 43, 145, 0.32)));
         return panel;
+    }
+
+    private VBox createMapLegend() {
+        VBox legend = new VBox(3);
+        switch (campaignMap) {
+            case CEMETERY -> legend.getChildren().setAll(
+                    createLegendRow("STONE WALL / IRON FENCE", createThemeLegendIcon("wall")),
+                    createLegendRow("GRAVE / ROOT (BLOCKED)", createThemeLegendIcon("obstacle")),
+                    createLegendRow("GRASS / MUD PATH", createThemeLegendIcon("floor")),
+                    createLegendRow("UNEXPLORED / FOG", createThemeLegendIcon("fog")),
+                    createLegendRow("CURSED KEY", createHudIcon("key")),
+                    createLegendRow("CEMETERY GATE", createThemeLegendIcon("exit")),
+                    createLegendRow("YOU", createLegendImage(playerIdleFrames[0], 1.1)));
+            case HOSPITAL -> legend.getChildren().setAll(
+                    createLegendRow("DAMAGED WALL / DOOR", createThemeLegendIcon("wall")),
+                    createLegendRow("BED / EQUIPMENT (BLOCKED)", createThemeLegendIcon("obstacle")),
+                    createLegendRow("STAINED TILE FLOOR", createThemeLegendIcon("floor")),
+                    createLegendRow("UNEXPLORED / FOG", createThemeLegendIcon("fog")),
+                    createLegendRow("SECURITY KEYCARD", createHudIcon("key")),
+                    createLegendRow("EMERGENCY EXIT", createThemeLegendIcon("exit")),
+                    createLegendRow("YOU", createLegendImage(playerIdleFrames[0], 1.1)));
+            default -> legend.getChildren().setAll(
+                    createLegendRow("GOTHIC WALL / PAINTING", createThemeLegendIcon("wall")),
+                    createLegendRow("AGED WOOD FLOOR", createThemeLegendIcon("floor")),
+                    createLegendRow("UNEXPLORED / FOG", createThemeLegendIcon("fog")),
+                    createLegendRow("ANTIQUE KEY", createHudIcon("key")),
+                    createLegendRow("ORNATE EXIT", createThemeLegendIcon("exit")),
+                    createLegendRow("YOU", createLegendImage(playerIdleFrames[0], 1.1)));
+        }
+        return legend;
+    }
+
+    private Canvas createThemeLegendIcon(String kind) {
+        Canvas icon = new Canvas(24, 20);
+        GraphicsContext graphics = icon.getGraphicsContext2D();
+        graphics.setStroke(Color.web("#0b090d"));
+        graphics.setLineWidth(1);
+
+        if ("fog".equals(kind)) {
+            graphics.setFill(Color.web("#08070b"));
+            graphics.fillRect(0, 0, 24, 20);
+            graphics.setFill(getMiniMapFogColor());
+            graphics.fillRect(0, 0, 24, 20);
+        } else if ("wall".equals(kind)) {
+            graphics.setFill(getMiniMapWallColor(Tile.Type.WALL));
+            graphics.fillRect(0, 0, 24, 20);
+            graphics.setFill(Color.web("#17131a", 0.8));
+            graphics.fillRect(3, 4, 18, 13);
+            graphics.setStroke(getMiniMapEdgeColor(Tile.Type.WALL));
+            graphics.strokeRect(2, 2, 20, 16);
+            if (campaignMap == CampaignMap.CEMETERY) {
+                graphics.setStroke(Color.web("#a2a98d"));
+                graphics.setLineWidth(1.4);
+                graphics.strokeLine(6, 4, 6, 17);
+                graphics.strokeLine(12, 4, 12, 17);
+                graphics.strokeLine(18, 4, 18, 17);
+                graphics.strokeLine(3, 8, 21, 8);
+            } else if (campaignMap == CampaignMap.HOSPITAL) {
+                graphics.setFill(Color.web("#222829"));
+                graphics.fillRect(7, 3, 11, 14);
+                graphics.setStroke(Color.web("#9da59d"));
+                graphics.strokeRect(7, 3, 11, 14);
+                graphics.setFill(Color.web("#aa9c7e"));
+                graphics.fillOval(15, 9, 1.8, 1.8);
+            } else {
+                graphics.setFill(Color.web("#472d39"));
+                graphics.fillRect(5, 3, 14, 14);
+                graphics.setStroke(Color.web("#b08c5c"));
+                graphics.strokeRect(5, 3, 14, 14);
+            }
+        } else if ("obstacle".equals(kind)) {
+            graphics.setFill(getMiniMapWallColor(Tile.Type.OBSTACLE));
+            graphics.fillRect(0, 0, 24, 20);
+            graphics.setFill(Color.rgb(0, 0, 0, 0.35));
+            graphics.fillOval(3, 14, 18, 4);
+            if (campaignMap == CampaignMap.CEMETERY) {
+                graphics.setFill(Color.web("#717869"));
+                graphics.fillRoundRect(7, 3, 10, 14, 5, 5);
+                graphics.setStroke(Color.web("#a7aa94"));
+                graphics.strokeLine(12, 6, 12, 12);
+                graphics.strokeLine(9, 9, 15, 9);
+            } else if (campaignMap == CampaignMap.HOSPITAL) {
+                graphics.setFill(Color.web("#89908a"));
+                graphics.fillRoundRect(3, 6, 18, 8, 2, 2);
+                graphics.setStroke(Color.web("#c1b9a7"));
+                graphics.strokeLine(5, 14, 5, 18);
+                graphics.strokeLine(19, 14, 19, 18);
+            } else {
+                graphics.setFill(Color.web("#6b4b36"));
+                graphics.fillRect(5, 3, 14, 14);
+                graphics.setFill(Color.web("#51405b"));
+                graphics.fillOval(8, 5, 8, 8);
+            }
+        } else if ("exit".equals(kind)) {
+            graphics.setFill(getMiniMapFloorColor());
+            graphics.fillRect(0, 0, 24, 20);
+            if (campaignMap == CampaignMap.CEMETERY) {
+                graphics.setStroke(Color.web("#c1c4a7"));
+                graphics.setLineWidth(2);
+                for (int x : new int[]{6, 12, 18}) {
+                    graphics.strokeLine(x, 3, x, 18);
+                }
+                graphics.strokeLine(4, 8, 20, 8);
+                graphics.strokeLine(4, 15, 20, 15);
+            } else if (campaignMap == CampaignMap.HOSPITAL) {
+                graphics.setFill(Color.web("#263b36"));
+                graphics.fillRoundRect(3, 2, 18, 16, 2, 2);
+                graphics.setStroke(Color.web("#80c6a5"));
+                graphics.strokeRect(3, 2, 18, 16);
+                graphics.setFill(Color.web("#9cf2c2"));
+                graphics.fillRect(7, 6, 10, 2);
+                graphics.fillRect(7, 10, 7, 2);
+            } else {
+                graphics.setFill(Color.web("#681b24"));
+                graphics.fillRoundRect(5, 2, 14, 16, 3, 3);
+                graphics.setStroke(Color.web("#b08d57"));
+                graphics.strokeRoundRect(4, 1, 16, 18, 4, 4);
+            }
+        } else {
+            graphics.setFill(getMiniMapFloorColor());
+            graphics.fillRect(0, 0, 24, 20);
+            if (campaignMap == CampaignMap.CEMETERY) {
+                graphics.setFill(Color.web("#354831"));
+                graphics.fillOval(4, 5, 5, 3);
+                graphics.fillOval(15, 12, 6, 4);
+                graphics.setFill(Color.web("#484236"));
+                graphics.fillRoundRect(9, 3, 7, 14, 3, 3);
+                graphics.setStroke(Color.web("#28261f"));
+                graphics.strokeLine(10, 5, 15, 5);
+                graphics.strokeLine(10, 14, 15, 14);
+            } else if (campaignMap == CampaignMap.HOSPITAL) {
+                graphics.setFill(Color.web("#343b3d"));
+                graphics.fillRect(0, 0, 24, 20);
+                graphics.setStroke(Color.web("#171d1f"));
+                graphics.strokeRect(2, 2, 20, 16);
+                graphics.setStroke(Color.web("#78807d", 0.65));
+                graphics.strokeLine(3, 3, 21, 3);
+            } else {
+                graphics.setFill(Color.web("#35251f"));
+                graphics.fillRect(0, 0, 24, 20);
+                graphics.setStroke(Color.web("#624333"));
+                graphics.strokeLine(1, 6, 23, 6);
+                graphics.strokeLine(1, 13, 23, 13);
+                graphics.setStroke(Color.web("#171115"));
+                graphics.strokeLine(8, 7, 8, 12);
+                graphics.strokeLine(18, 14, 18, 19);
+            }
+        }
+        graphics.setStroke(getMiniMapEdgeColor(Tile.Type.FLOOR));
+        graphics.setLineWidth(0.8);
+        graphics.strokeRect(0.4, 0.4, 23.2, 19.2);
+        return icon;
     }
 
     private VBox createMiniMap() {
@@ -679,11 +893,11 @@ public class GameScreen extends BorderPane {
         GraphicsContext mapGraphics = mapTiles.getGraphicsContext2D();
         for (int row = 0; row < rows; row++) {
             for (int column = 0; column < columns; column++) {
-                boolean wall = maze.isWall(row, column);
-                mapGraphics.setFill(wall ? Color.web("#694783") : Color.web("#292333"));
+                Tile.Type type = maze.getTile(row, column).getType();
+                mapGraphics.setFill(getMiniMapWallColor(type));
                 mapGraphics.fillRect(offsetX + column * cellSize, offsetY + row * cellSize,
                         cellSize, cellSize);
-                mapGraphics.setStroke(wall ? Color.web("#a77bc4") : Color.web("#44394f"));
+                mapGraphics.setStroke(getMiniMapEdgeColor(type));
                 mapGraphics.setLineWidth(Math.max(0.35, cellSize * 0.06));
                 mapGraphics.strokeRect(offsetX + column * cellSize, offsetY + row * cellSize,
                         cellSize, cellSize);
@@ -699,6 +913,62 @@ public class GameScreen extends BorderPane {
         miniMapPlayer = createMiniMapImage(playerIdleFrames[0]);
         miniMapPane.getChildren().add(miniMapPlayer);
         updateMiniMapMarkers(offsetX, offsetY, cellSize);
+    }
+
+    private Color getMiniMapWallColor(Tile.Type type) {
+        return switch (campaignMap) {
+            case CEMETERY -> switch (type) {
+                case WALL -> Color.web("#53644d");
+                case OBSTACLE -> Color.web("#768067");
+                case FLOOR -> getMiniMapFloorColor();
+            };
+            case HOSPITAL -> switch (type) {
+                case WALL -> Color.web("#667276");
+                case OBSTACLE -> Color.web("#858a80");
+                case FLOOR -> getMiniMapFloorColor();
+            };
+            default -> switch (type) {
+                case WALL -> Color.web("#694783");
+                case OBSTACLE -> Color.web("#8a6648");
+                case FLOOR -> getMiniMapFloorColor();
+            };
+        };
+    }
+
+    private Color getMiniMapFloorColor() {
+        return switch (campaignMap) {
+            case CEMETERY -> Color.web("#303a2e");
+            case HOSPITAL -> Color.web("#353e41");
+            default -> Color.web("#292333");
+        };
+    }
+
+    private Color getMiniMapEdgeColor(Tile.Type type) {
+        return switch (campaignMap) {
+            case CEMETERY -> switch (type) {
+                case WALL -> Color.web("#99aa83");
+                case OBSTACLE -> Color.web("#bbc29b");
+                case FLOOR -> Color.web("#45533f");
+            };
+            case HOSPITAL -> switch (type) {
+                case WALL -> Color.web("#a0b4b4");
+                case OBSTACLE -> Color.web("#c1b9a7");
+                case FLOOR -> Color.web("#4c595b");
+            };
+            default -> switch (type) {
+                case WALL -> Color.web("#a77bc4");
+                case OBSTACLE -> Color.web("#c4a276");
+                case FLOOR -> Color.web("#44394f");
+            };
+        };
+    }
+
+    private Color getMiniMapFogColor() {
+        return switch (campaignMap) {
+            case CEMETERY -> Color.rgb(3, 11, 5, 0.52);
+            case HOSPITAL -> Color.rgb(5, 10, 13, 0.52);
+            default -> Color.rgb(5, 4, 9, 0.48);
+        };
     }
 
     private ImageView createMiniMapImage(Image image) {
@@ -747,7 +1017,7 @@ public class GameScreen extends BorderPane {
                 if (currentlyVisible) {
                     miniMapExplored[row][column] = true;
                 } else if (miniMapExplored[row][column]) {
-                    graphics.setFill(Color.rgb(5, 4, 9, 0.48));
+                        graphics.setFill(getMiniMapFogColor());
                     graphics.fillRect(offsetX + column * cellSize, offsetY + row * cellSize,
                             cellSize + 0.25, cellSize + 0.25);
                 } else {
@@ -821,33 +1091,6 @@ public class GameScreen extends BorderPane {
         return imageView;
     }
 
-    private Rectangle createWallLegendIcon() {
-        Rectangle wall = new Rectangle(24, 20);
-        wall.setFill(new LinearGradient(0, 0, 1, 1, true, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.web("#4a285d")),
-                new Stop(0.45, Color.web("#24152f")),
-                new Stop(1, Color.web("#120b1b"))));
-        wall.setStroke(Color.web("#9b6bb5"));
-        wall.setStrokeWidth(1.2);
-        wall.setArcWidth(3);
-        wall.setArcHeight(3);
-        return wall;
-    }
-
-    private Rectangle createExploredFloorLegendIcon() {
-        Rectangle floor = new Rectangle(24, 20, Color.web("#292333"));
-        floor.setStroke(Color.web("#6b5a79"));
-        floor.setStrokeWidth(1.2);
-        return floor;
-    }
-
-    private Rectangle createUnexploredFloorLegendIcon() {
-        Rectangle floor = new Rectangle(24, 20, Color.web("#07050c"));
-        floor.setStroke(Color.web("#44394f"));
-        floor.setStrokeWidth(1.2);
-        return floor;
-    }
-
     private Circle createMapMarker(Color color, boolean glow) {
         Circle marker = new Circle(6, color);
         if (glow) {
@@ -857,7 +1100,14 @@ public class GameScreen extends BorderPane {
     }
 
     private void configureGameBackground() {
-        setStyle("-fx-background-color: linear-gradient(to bottom, #05020a, #10061a 55%, #050208);");
+        switch (campaignMap) {
+            case CEMETERY -> setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, #030805, #101a12 55%, #030604);");
+            case HOSPITAL -> setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, #03070a, #101a1e 55%, #030609);");
+            default -> setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, #05020a, #10061a 55%, #050208);");
+        }
     }
 
     private Button createPauseButton() {
@@ -894,6 +1144,18 @@ public class GameScreen extends BorderPane {
         playerShape.setPreserveRatio(true);
         playerShape.setSmooth(true);
         playerShape.setCache(true);
+        if (campaignMap == CampaignMap.CEMETERY) {
+            javafx.scene.effect.ColorAdjust moonlit = new javafx.scene.effect.ColorAdjust();
+            moonlit.setHue(-0.12);
+            moonlit.setSaturation(-0.2);
+            moonlit.setBrightness(-0.12);
+            playerShape.setEffect(moonlit);
+        } else if (campaignMap == CampaignMap.HOSPITAL) {
+            javafx.scene.effect.ColorAdjust drained = new javafx.scene.effect.ColorAdjust();
+            drained.setSaturation(-0.55);
+            drained.setBrightness(-0.08);
+            playerShape.setEffect(drained);
+        }
         keyShape = createKeyVisual();
         exitShape = createExitVisual(false);
         mazePane.getChildren().addAll(playerShape, keyShape, exitShape);
@@ -907,23 +1169,593 @@ public class GameScreen extends BorderPane {
         GraphicsContext graphics = mazeTiles.getGraphicsContext2D();
         for (int row = 0; row < rows; row++) {
             for (int column = 0; column < columns; column++) {
-                boolean wall = maze.isWall(row, column);
+                Tile tile = maze.getTile(row, column);
+                boolean wall = tile.getType() == Tile.Type.WALL;
+                boolean obstacle = tile.getType() == Tile.Type.OBSTACLE;
                 double x = column * TILE_SIZE;
                 double y = row * TILE_SIZE;
-                graphics.setFill(wall ? hauntedWallPaint(x, y) : hauntedFloorPaint(row, column, x, y));
-                graphics.fillRoundRect(x, y, TILE_SIZE, TILE_SIZE,
-                        wall ? 6 : 0, wall ? 6 : 0);
-                graphics.setStroke(wall ? Color.web("#9b6bb5") : Color.web("#352941"));
-                graphics.setLineWidth(wall ? 2 : 1);
-                if (wall) {
-                    graphics.strokeRoundRect(x, y, TILE_SIZE, TILE_SIZE, 6, 6);
+                if (campaignMap == CampaignMap.MANSION) {
+                    drawMansionTile(graphics, row, column, wall, obstacle, x, y);
                 } else {
-                    graphics.setStroke(Color.web("#3d2b42"));
-                    graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+                    drawCampaignTile(graphics, row, column, wall, obstacle, x, y);
                 }
             }
         }
         return mazeTiles;
+    }
+
+    private void drawMansionTile(
+            GraphicsContext graphics, int row, int column, boolean wall,
+            boolean obstacle, double x, double y) {
+        int detail = Math.floorMod(row * 31 + column * 17, 23);
+        if (wall || obstacle) {
+            graphics.setFill(hauntedWallPaint(x, y));
+            graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            graphics.setFill(Color.web("#342238"));
+            graphics.fillRect(x + 3, y + 4, 58, 4);
+            graphics.setFill(Color.web("#120d17"));
+            graphics.fillRect(x + 3, y + 9, 58, 2);
+
+            if (obstacle || detail % 7 == 0) {
+                drawMansionPainting(graphics, x, y, detail);
+            } else if (detail % 9 == 0) {
+                drawCobweb(graphics, x, y);
+            } else {
+                drawMansionWallPanel(graphics, x, y, detail);
+            }
+            graphics.setFill(Color.rgb(0, 0, 0, 0.22));
+            graphics.fillRect(x, y + 57, TILE_SIZE, 7);
+            graphics.setStroke(Color.web("#59415e"));
+            graphics.setLineWidth(1);
+            graphics.strokeRect(x + 0.5, y + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
+            return;
+        }
+
+        Color boards = (row + column) % 2 == 0
+                ? Color.web("#35251f") : Color.web("#2d201c");
+        graphics.setFill(new LinearGradient(x, y, x, y + TILE_SIZE, false,
+                CycleMethod.NO_CYCLE,
+                new Stop(0, boards.brighter()),
+                new Stop(0.5, boards),
+                new Stop(1, boards.darker())));
+        graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+        for (int plank = 0; plank < 4; plank++) {
+            double plankY = y + plank * 16;
+            graphics.setStroke(Color.web("#171115"));
+            graphics.setLineWidth(1.1);
+            graphics.strokeLine(x, plankY, x + TILE_SIZE, plankY);
+            graphics.setStroke(Color.web("#624333", 0.65));
+            graphics.strokeLine(x + 2, plankY + 2, x + 62, plankY + 2);
+            double seamX = x + ((plank + (row & 1)) % 2 == 0 ? 18 : 47);
+            graphics.setStroke(Color.web("#171115"));
+            graphics.strokeLine(seamX, plankY + 3, seamX, Math.min(y + 63, plankY + 14));
+        }
+        if (detail % 5 == 0) {
+            graphics.setStroke(Color.web("#171115", 0.85));
+            graphics.setLineWidth(1.3);
+            graphics.strokeOval(x + 26, y + 26, 11, 5);
+            graphics.strokeLine(x + 31, y + 29, x + 48, y + 34);
+        }
+        if (detail % 11 == 0) {
+            drawDustAndCobweb(graphics, x, y, detail);
+        }
+        if (detail % 19 == 0) {
+            drawDustyCarpet(graphics, x, y);
+        }
+        graphics.setStroke(Color.web("#130f15"));
+        graphics.setLineWidth(1);
+        graphics.strokeRect(x + 0.5, y + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
+    }
+
+    private void drawMansionWallPanel(GraphicsContext graphics, double x, double y, int detail) {
+        graphics.setFill(Color.web("#211723"));
+        graphics.fillRect(x + 11, y + 15, 42, 42);
+        graphics.setStroke(Color.web("#765a48"));
+        graphics.setLineWidth(2);
+        graphics.strokeRect(x + 8, y + 12, 48, 48);
+        graphics.setStroke(Color.web("#473448"));
+        graphics.setLineWidth(1);
+        graphics.strokeRect(x + 12, y + 16, 40, 40);
+        if (detail % 4 == 0) {
+            graphics.setStroke(Color.web("#958274", 0.65));
+            graphics.setLineWidth(1.2);
+            graphics.strokeLine(x + 19, y + 19, x + 31, y + 32);
+            graphics.strokeLine(x + 31, y + 32, x + 24, y + 43);
+            graphics.strokeLine(x + 31, y + 32, x + 43, y + 37);
+        } else {
+            graphics.setStroke(Color.web("#9a7354"));
+            graphics.strokeLine(x + 4, y + 57, x + 60, y + 57);
+            graphics.setFill(Color.web("#211723"));
+            graphics.fillRect(x + 18, y + 24, 28, 27);
+            graphics.setStroke(Color.web("#69503f"));
+            graphics.strokeRect(x + 18, y + 24, 28, 27);
+        }
+    }
+
+    private void drawMansionPainting(GraphicsContext graphics, double x, double y, int detail) {
+        graphics.setFill(Color.rgb(0, 0, 0, 0.42));
+        graphics.fillRoundRect(x + 13, y + 16, 39, 43, 2, 2);
+        graphics.setFill(Color.web("#6b4b36"));
+        graphics.fillRect(x + 10, y + 10, 42, 45);
+        graphics.setFill(Color.web("#17131b"));
+        graphics.fillRect(x + 14, y + 14, 34, 37);
+        graphics.setStroke(Color.web("#ad8755"));
+        graphics.setLineWidth(1);
+        graphics.strokeRect(x + 11, y + 11, 40, 43);
+        graphics.setFill(detail % 2 == 0 ? Color.web("#51405b") : Color.web("#413738"));
+        graphics.fillOval(x + 23, y + 19, 15, 14);
+        graphics.setFill(Color.web("#17131b"));
+        graphics.fillOval(x + 26, y + 23, 3, 3);
+        graphics.fillOval(x + 33, y + 23, 3, 3);
+        graphics.setFill(Color.web("#392d38"));
+        graphics.fillRoundRect(x + 19, y + 32, 25, 17, 8, 4);
+        graphics.setFill(Color.web("#bea779", 0.72));
+        graphics.fillOval(x + 28, y + 26, 2, 2);
+        graphics.fillOval(x + 35, y + 26, 2, 2);
+    }
+
+    private void drawCobweb(GraphicsContext graphics, double x, double y) {
+        graphics.setStroke(Color.web("#b6a9a0", 0.62));
+        graphics.setLineWidth(0.8);
+        graphics.strokeLine(x + 2, y + 2, x + 31, y + 31);
+        graphics.strokeLine(x + 2, y + 2, x + 31, y + 5);
+        graphics.strokeLine(x + 2, y + 2, x + 6, y + 31);
+        graphics.strokeLine(x + 9, y + 3, x + 5, y + 10);
+        graphics.strokeLine(x + 16, y + 3, x + 7, y + 17);
+        graphics.strokeLine(x + 23, y + 3, x + 9, y + 24);
+    }
+
+    private void drawDustAndCobweb(GraphicsContext graphics, double x, double y, int detail) {
+        graphics.setFill(Color.web("#c2aa83", 0.2));
+        for (int speck = 0; speck < 7; speck++) {
+            double sx = x + 8 + Math.floorMod(detail * (speck + 3), 49);
+            double sy = y + 7 + Math.floorMod(detail * (speck + 5), 45);
+            graphics.fillOval(sx, sy, 1.5, 1.5);
+        }
+        if (detail % 2 == 0) {
+            drawCobweb(graphics, x, y);
+        }
+    }
+
+    private void drawDustyCarpet(GraphicsContext graphics, double x, double y) {
+        graphics.setFill(Color.rgb(12, 8, 14, 0.35));
+        graphics.fillRoundRect(x + 5, y + 7, 54, 52, 3, 3);
+        graphics.setFill(new LinearGradient(x + 7, y + 8, x + 52, y + 58,
+                false, CycleMethod.NO_CYCLE,
+                new Stop(0, Color.web("#492735")),
+                new Stop(0.5, Color.web("#34202f")),
+                new Stop(1, Color.web("#241b27"))));
+        graphics.fillRoundRect(x + 8, y + 6, 48, 50, 3, 3);
+        graphics.setStroke(Color.web("#987451", 0.75));
+        graphics.setLineWidth(1.4);
+        graphics.strokeRoundRect(x + 10, y + 8, 44, 46, 2, 2);
+        graphics.setStroke(Color.web("#785644", 0.8));
+        graphics.setLineWidth(0.8);
+        graphics.strokeRoundRect(x + 14, y + 12, 36, 38, 2, 2);
+        graphics.strokeLine(x + 15, y + 15, x + 48, y + 47);
+        graphics.strokeLine(x + 48, y + 15, x + 15, y + 47);
+        graphics.setFill(Color.web("#b39a75", 0.45));
+        graphics.fillOval(x + 28, y + 29, 7, 7);
+        graphics.setFill(Color.web("#18121a"));
+        graphics.fillOval(x + 30, y + 30, 2, 2);
+        graphics.fillOval(x + 33, y + 30, 2, 2);
+    }
+
+    private void drawCampaignTile(
+            GraphicsContext graphics, int row, int column, boolean wall,
+            boolean obstacle, double x, double y) {
+        if (campaignMap == CampaignMap.CEMETERY) {
+            drawCemeteryTile(graphics, row, column, wall, obstacle, x, y);
+        } else {
+            drawHospitalTile(graphics, row, column, wall, obstacle, x, y);
+        }
+    }
+
+    private void drawCemeteryTile(
+            GraphicsContext graphics, int row, int column, boolean wall,
+            boolean obstacle, double x, double y) {
+        int detail = Math.floorMod(row * 37 + column * 19, 31);
+        if (obstacle) {
+            graphics.setFill(new LinearGradient(x, y, x, y + TILE_SIZE, false,
+                    CycleMethod.NO_CYCLE,
+                    new Stop(0, Color.web("#2d3a2d")),
+                    new Stop(1, Color.web("#172119"))));
+            graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            if (detail % 3 == 0) {
+                drawDeadTree(graphics, x, y);
+            } else {
+                drawGravestone(graphics, x, y);
+            }
+            graphics.setStroke(Color.web("#18241b"));
+            graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+            return;
+        }
+        if (wall) {
+            graphics.setFill(new LinearGradient(x, y, x + TILE_SIZE, y + TILE_SIZE,
+                    false, CycleMethod.NO_CYCLE,
+                    new Stop(0, Color.web("#4a5144")),
+                    new Stop(1, Color.web("#20281f"))));
+            graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            if (detail % 5 == 0) {
+                graphics.setStroke(Color.web("#555e4f"));
+                graphics.setLineWidth(3);
+                graphics.strokeLine(x + 4, y + 45, x + 60, y + 45);
+                for (int post = 0; post < 4; post++) {
+                    double postX = x + 9 + post * 15;
+                    graphics.strokeLine(postX, y + 11, postX, y + 57);
+                    graphics.setFill(Color.web("#717969"));
+                    graphics.fillOval(postX - 3, y + 7, 6, 7);
+                }
+                graphics.setStroke(Color.web("#a0a487", 0.55));
+                graphics.setLineWidth(1);
+                graphics.strokeLine(x + 4, y + 43, x + 60, y + 43);
+            } else if (detail % 5 == 1) {
+                drawDeadTree(graphics, x, y);
+                drawTreeRoots(graphics, x, y);
+            } else {
+                drawStonework(graphics, x, y);
+                if (detail % 5 == 2) {
+                    drawGravestone(graphics, x, y);
+                }
+                if (detail % 5 == 3) {
+                    drawMausoleumArch(graphics, x, y);
+                }
+            }
+            graphics.setStroke(Color.web("#111a13"));
+            graphics.setLineWidth(1);
+            graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+            return;
+        }
+
+        Color ground = (row + column) % 3 == 0
+                ? Color.web("#1b3020") : Color.web("#243226");
+        graphics.setFill(ground);
+        graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+        boolean pathTile = (row * 3 + column * 5) % 4 != 0;
+        if (pathTile) {
+            graphics.setFill(new LinearGradient(x, y, x, y + TILE_SIZE, false,
+                    CycleMethod.NO_CYCLE,
+                    new Stop(0, Color.web("#554d3e")),
+                    new Stop(0.55, (row + column) % 2 == 0
+                            ? Color.web("#484236") : Color.web("#3c392f")),
+                    new Stop(1, Color.web("#302e28"))));
+            graphics.fillRoundRect(x + 3, y + 3, 58, 58, 8, 8);
+            graphics.setStroke(Color.web("#28261f"));
+            graphics.setLineWidth(1);
+            graphics.strokeLine(x + 7, y + 15, x + 57, y + 15);
+            graphics.strokeLine(x + 6, y + 50, x + 58, y + 50);
+            graphics.setFill(Color.rgb(113, 101, 75, 0.36));
+            graphics.fillOval(x + 12 + detail % 20, y + 17, 5, 3);
+            graphics.fillOval(x + 37, y + 40 - detail % 9, 4, 3);
+            drawPathCracks(graphics, x, y, detail);
+        } else {
+            graphics.setFill(Color.web("#354831"));
+            graphics.fillOval(x + 11, y + 13, 5, 3);
+            graphics.fillOval(x + 44, y + 42, 6, 4);
+            graphics.setStroke(Color.web("#63724f", 0.56));
+            graphics.setLineWidth(1);
+            graphics.strokeLine(x + 12, y + 15, x + 8, y + 10);
+            graphics.strokeLine(x + 14, y + 15, x + 17, y + 9);
+            graphics.strokeLine(x + 46, y + 44, x + 41, y + 38);
+            graphics.strokeLine(x + 47, y + 44, x + 53, y + 40);
+            drawSoilDetails(graphics, x, y, detail);
+        }
+        if (detail == 3) {
+            graphics.setFill(Color.web("#332d25"));
+            graphics.fillOval(x + 12, y + 26, 40, 20);
+            graphics.setStroke(Color.web("#574d3e"));
+            graphics.strokeOval(x + 12, y + 26, 40, 20);
+        } else if (detail == 9) {
+            graphics.setStroke(Color.web("#57472f"));
+            graphics.setLineWidth(3);
+            graphics.strokeLine(x + 10, y + 38, x + 33, y + 32);
+            graphics.strokeLine(x + 33, y + 32, x + 53, y + 44);
+        } else if (detail == 14) {
+            graphics.setStroke(Color.web("#171d18"));
+            graphics.setLineWidth(2);
+            graphics.strokeLine(x + 18, y + 15, x + 28, y + 31);
+            graphics.strokeLine(x + 28, y + 31, x + 23, y + 48);
+        } else if (detail == 22) {
+            drawSkeletalRemains(graphics, x, y);
+        }
+        graphics.setStroke(Color.web("#18241b"));
+        graphics.setLineWidth(1);
+        graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+    }
+
+    private void drawHospitalTile(
+            GraphicsContext graphics, int row, int column, boolean wall,
+            boolean obstacle, double x, double y) {
+        int detail = Math.floorMod(row * 29 + column * 13, 37);
+        if (obstacle) {
+            graphics.setFill(Color.web("#343b3d"));
+            graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            if (detail % 3 == 0) {
+                drawHospitalBed(graphics, x, y);
+            } else if (detail % 3 == 1) {
+                drawWheelchair(graphics, x, y);
+            } else {
+                drawOperatingTable(graphics, x, y);
+            }
+            graphics.setStroke(Color.web("#202628"));
+            graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+            return;
+        }
+        if (wall) {
+            graphics.setFill(new LinearGradient(x, y, x, y + TILE_SIZE,
+                    false, CycleMethod.NO_CYCLE,
+                    new Stop(0, Color.web("#55595a")),
+                    new Stop(1, Color.web("#292f31"))));
+            graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            graphics.setFill(Color.web("#777775", 0.72));
+            graphics.fillRect(x + 2, y + 7, 60, 3);
+            graphics.setFill(Color.web("#202628"));
+            graphics.fillRect(x + 2, y + 11, 60, 2);
+            if (detail % 10 == 0) {
+                graphics.setFill(Color.rgb(171, 41, 44, 0.15));
+                graphics.fillOval(x + 12, y + 5, 42, 51);
+                graphics.setFill(Color.web("#7b2d32"));
+                graphics.fillRect(x + 23, y + 18, 18, 30);
+                graphics.setFill(Color.web("#e0c4a0"));
+                graphics.fillRect(x + 30, y + 22, 4, 22);
+                graphics.fillRect(x + 22, y + 31, 20, 4);
+                graphics.setFill(Color.web("#e7d5a0"));
+                graphics.setEffect(new Glow(0.2));
+                graphics.fillRoundRect(x + 27, y + 2, 10, 5, 2, 2);
+                graphics.setEffect(null);
+            } else if (detail % 6 == 0) {
+                graphics.setFill(Color.web("#252729"));
+                graphics.fillRect(x + 13, y + 8, 38, 53);
+                graphics.setStroke(Color.web("#8a7770"));
+                graphics.setLineWidth(2);
+                graphics.strokeRect(x + 13, y + 8, 38, 53);
+                graphics.setFill(Color.web("#a18c65"));
+                graphics.fillOval(x + 44, y + 34, 3, 3);
+                graphics.setFill(Color.web("#663d35", 0.62));
+                graphics.fillRect(x + 17, y + 12, 30, 10);
+            } else {
+                graphics.setFill(Color.web("#363c3d"));
+                graphics.fillRect(x + 7, y + 16, 50, 40);
+                graphics.setFill(Color.web("#4e5554"));
+                graphics.fillRect(x + 9, y + 18, 46, 2);
+                graphics.fillRect(x + 9, y + 52, 46, 2);
+                graphics.setStroke(Color.web("#353a3b"));
+                graphics.strokeLine(x + 3, y + 31, x + 61, y + 31);
+                if (detail % 4 == 0) {
+                    graphics.setStroke(Color.web("#24292a"));
+                    graphics.strokeLine(x + 13, y + 4, x + 39, y + 24);
+                    graphics.strokeLine(x + 39, y + 24, x + 33, y + 41);
+                    graphics.strokeLine(x + 33, y + 41, x + 49, y + 54);
+                }
+            }
+        } else {
+            Color tileBase = (row + column) % 2 == 0
+                    ? Color.web("#343b3d") : Color.web("#2d3436");
+            graphics.setFill(new LinearGradient(x, y, x, y + TILE_SIZE, false,
+                    CycleMethod.NO_CYCLE, new Stop(0, tileBase.brighter()),
+                    new Stop(1, tileBase.darker())));
+            graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            graphics.setStroke(Color.web("#444a4b"));
+            graphics.setLineWidth(1);
+            graphics.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+            graphics.setStroke(Color.web("#171d1f", 0.65));
+            graphics.strokeRect(x + 5, y + 5, TILE_SIZE - 10, TILE_SIZE - 10);
+            graphics.setStroke(Color.web("#78807d", 0.38));
+            graphics.strokeLine(x + 4, y + 4, x + 60, y + 4);
+            if (detail % 8 == 0) {
+                graphics.setStroke(Color.web("#171d1f"));
+                graphics.setLineWidth(2.2);
+                graphics.strokeLine(x + 13, y + 11, x + 31, y + 26);
+                graphics.strokeLine(x + 31, y + 26, x + 24, y + 48);
+                graphics.strokeLine(x + 24, y + 48, x + 38, y + 54);
+                graphics.setStroke(Color.web("#777977", 0.65));
+                graphics.setLineWidth(0.8);
+                graphics.strokeLine(x + 14, y + 12, x + 31, y + 24);
+            } else if (detail % 11 == 0) {
+                graphics.setFill(Color.rgb(105, 25, 31, 0.24));
+                graphics.fillOval(x + 14, y + 23, 37, 23);
+                graphics.setFill(Color.rgb(105, 25, 31, 0.55));
+                graphics.fillOval(x + 23, y + 27, 19, 11);
+                graphics.fillOval(x + 19, y + 31, 8, 6);
+            } else if (detail % 9 == 0) {
+                graphics.setFill(Color.web("#888579", 0.24));
+                graphics.fillOval(x + 7, y + 15, 19, 8);
+                graphics.fillOval(x + 37, y + 42, 17, 6);
+            } else if (detail % 5 == 0) {
+                drawMedicalCabinet(graphics, x, y);
+            } else if (detail % 7 == 0) {
+                graphics.setStroke(Color.web("#171d1f"));
+                graphics.setLineWidth(1);
+                graphics.strokeLine(x + 8, y + 46, x + 19, y + 41);
+                graphics.strokeLine(x + 19, y + 41, x + 27, y + 47);
+            }
+        }
+        graphics.setStroke(Color.web("#202628"));
+        graphics.setLineWidth(1);
+        graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+    }
+
+    private void drawStonework(GraphicsContext graphics, double x, double y) {
+        graphics.setStroke(Color.web("#101710", 0.82));
+        graphics.setLineWidth(2);
+        graphics.strokeLine(x + 2, y + 22, x + 62, y + 22);
+        graphics.strokeLine(x + 2, y + 44, x + 62, y + 44);
+        graphics.setStroke(Color.web("#78806e", 0.62));
+        graphics.setLineWidth(1);
+        graphics.strokeLine(x + 3, y + 20, x + 61, y + 20);
+        graphics.strokeLine(x + 3, y + 42, x + 61, y + 42);
+        graphics.strokeLine(x + 30, y + 3, x + 30, y + 20);
+        graphics.strokeLine(x + 15, y + 23, x + 15, y + 42);
+        graphics.strokeLine(x + 45, y + 23, x + 45, y + 42);
+        graphics.strokeLine(x + 30, y + 45, x + 30, y + 61);
+        graphics.setFill(Color.web("#171d16", 0.45));
+        graphics.fillOval(x + 7, y + 7, 9, 4);
+        graphics.fillOval(x + 38, y + 29, 14, 5);
+    }
+
+    private void drawGravestone(GraphicsContext graphics, double x, double y) {
+        graphics.setFill(Color.rgb(0, 0, 0, 0.3));
+        graphics.fillOval(x + 14, y + 45, 39, 8);
+        graphics.setFill(Color.web("#717869"));
+        graphics.fillRoundRect(x + 21, y + 13, 24, 35, 11, 11);
+        graphics.setStroke(Color.web("#a7aa94"));
+        graphics.setLineWidth(2);
+        graphics.strokeLine(x + 33, y + 20, x + 33, y + 35);
+        graphics.strokeLine(x + 27, y + 26, x + 39, y + 26);
+        graphics.setFill(Color.web("#4d5749"));
+        graphics.fillRect(x + 18, y + 46, 30, 4);
+        graphics.setStroke(Color.web("#374033"));
+        graphics.setLineWidth(1);
+        graphics.strokeLine(x + 23, y + 39, x + 27, y + 36);
+        graphics.strokeLine(x + 38, y + 31, x + 42, y + 36);
+        graphics.setFill(Color.web("#9faaa0", 0.5));
+        graphics.fillOval(x + 26, y + 6, 5, 2);
+    }
+
+    private void drawDeadTree(GraphicsContext graphics, double x, double y) {
+        graphics.setStroke(Color.web("#463b2e"));
+        graphics.setLineWidth(5);
+        graphics.strokeLine(x + 33, y + 61, x + 29, y + 20);
+        graphics.setLineWidth(3);
+        graphics.strokeLine(x + 30, y + 36, x + 12, y + 14);
+        graphics.strokeLine(x + 29, y + 31, x + 52, y + 7);
+        graphics.strokeLine(x + 29, y + 47, x + 11, y + 35);
+        graphics.strokeLine(x + 12, y + 14, x + 8, y + 4);
+        graphics.strokeLine(x + 52, y + 7, x + 57, y + 1);
+    }
+
+    private void drawTreeRoots(GraphicsContext graphics, double x, double y) {
+        graphics.setStroke(Color.web("#594633"));
+        graphics.setLineWidth(3);
+        graphics.strokeLine(x + 29, y + 53, x + 15, y + 59);
+        graphics.strokeLine(x + 30, y + 53, x + 44, y + 60);
+        graphics.strokeLine(x + 19, y + 57, x + 10, y + 55);
+        graphics.strokeLine(x + 42, y + 57, x + 54, y + 55);
+    }
+
+    private void drawMausoleumArch(GraphicsContext graphics, double x, double y) {
+        graphics.setFill(Color.web("#161b16"));
+        graphics.fillRect(x + 17, y + 25, 30, 34);
+        graphics.setStroke(Color.web("#8a8d78"));
+        graphics.setLineWidth(3);
+        graphics.strokeLine(x + 14, y + 56, x + 14, y + 32);
+        graphics.strokeLine(x + 50, y + 56, x + 50, y + 32);
+        graphics.strokeArc(x + 14, y + 15, 36, 34, 0, 180, javafx.scene.shape.ArcType.OPEN);
+        graphics.setStroke(Color.web("#343b31"));
+        graphics.setLineWidth(2);
+        graphics.strokeLine(x + 21, y + 28, x + 43, y + 28);
+        graphics.strokeLine(x + 21, y + 56, x + 43, y + 56);
+        graphics.setFill(Color.web("#958b70"));
+        graphics.fillOval(x + 29, y + 36, 5, 5);
+    }
+
+    private void drawPathCracks(GraphicsContext graphics, double x, double y, int detail) {
+        graphics.setStroke(Color.web("#27251f", 0.8));
+        graphics.setLineWidth(1.2);
+        if ((detail & 1) == 0) {
+            graphics.strokeLine(x + 8, y + 24, x + 19, y + 30);
+            graphics.strokeLine(x + 19, y + 30, x + 14, y + 38);
+            graphics.strokeLine(x + 14, y + 38, x + 24, y + 44);
+        } else {
+            graphics.strokeLine(x + 52, y + 18, x + 41, y + 24);
+            graphics.strokeLine(x + 41, y + 24, x + 47, y + 32);
+        }
+    }
+
+    private void drawSoilDetails(GraphicsContext graphics, double x, double y, int detail) {
+        graphics.setFill(Color.web("#171c15", 0.7));
+        graphics.fillOval(x + 20 + detail % 17, y + 27, 11, 4);
+        graphics.setStroke(Color.web("#10160f", 0.78));
+        graphics.setLineWidth(1.2);
+        graphics.strokeLine(x + 4, y + 53, x + 13, y + 48);
+        graphics.strokeLine(x + 13, y + 48, x + 20, y + 52);
+        graphics.setFill(Color.web("#69734c", 0.75));
+        graphics.fillOval(x + 6, y + 7, 2, 2);
+        graphics.fillOval(x + 52, y + 56, 2, 2);
+    }
+
+    private void drawSkeletalRemains(GraphicsContext graphics, double x, double y) {
+        graphics.setStroke(Color.web("#b2ad91"));
+        graphics.setLineWidth(3);
+        graphics.strokeLine(x + 13, y + 28, x + 47, y + 35);
+        graphics.strokeLine(x + 17, y + 40, x + 43, y + 22);
+        graphics.setStroke(Color.web("#777764"));
+        graphics.setLineWidth(1);
+        for (int rib = 0; rib < 5; rib++) {
+            double boneX = x + 22 + rib * 4;
+            graphics.strokeLine(boneX, y + 29 + rib * 0.8, boneX - 3, y + 36 + rib * 0.7);
+        }
+        graphics.setFill(Color.web("#c4bea0"));
+        graphics.fillOval(x + 8, y + 25, 7, 6);
+        graphics.setFill(Color.web("#303126"));
+        graphics.fillOval(x + 10, y + 27, 1.5, 1.5);
+    }
+
+    private void drawHospitalBed(GraphicsContext graphics, double x, double y) {
+        graphics.setFill(Color.rgb(0, 0, 0, 0.42));
+        graphics.fillOval(x + 7, y + 43, 51, 11);
+        graphics.setFill(Color.web("#4b5555"));
+        graphics.fillRoundRect(x + 9, y + 13, 45, 30, 4, 4);
+        graphics.setFill(Color.web("#89908a"));
+        graphics.fillRoundRect(x + 13, y + 15, 38, 23, 3, 3);
+        graphics.setFill(Color.web("#c1b9a7"));
+        graphics.fillRoundRect(x + 15, y + 16, 13, 9, 3, 3);
+        graphics.setFill(Color.web("#7c8580"));
+        graphics.fillRect(x + 29, y + 16, 19, 20);
+        graphics.setStroke(Color.web("#a3a399"));
+        graphics.setLineWidth(2);
+        graphics.strokeLine(x + 13, y + 42, x + 13, y + 54);
+        graphics.strokeLine(x + 49, y + 42, x + 49, y + 54);
+        graphics.setStroke(Color.web("#979b94"));
+        graphics.setLineWidth(1.3);
+        graphics.strokeLine(x + 8, y + 11, x + 8, y + 38);
+        graphics.strokeLine(x + 55, y + 11, x + 55, y + 38);
+        graphics.setFill(Color.web("#6e3a3b", 0.72));
+        graphics.fillOval(x + 31, y + 24, 9, 6);
+    }
+
+    private void drawWheelchair(GraphicsContext graphics, double x, double y) {
+        graphics.setStroke(Color.web("#9a9b91"));
+        graphics.setLineWidth(3);
+        graphics.strokeOval(x + 17, y + 25, 29, 29);
+        graphics.strokeLine(x + 30, y + 27, x + 30, y + 14);
+        graphics.strokeLine(x + 30, y + 15, x + 42, y + 15);
+        graphics.strokeLine(x + 30, y + 27, x + 42, y + 34);
+        graphics.strokeLine(x + 42, y + 34, x + 42, y + 47);
+        graphics.strokeLine(x + 30, y + 27, x + 19, y + 27);
+    }
+
+    private void drawOperatingTable(GraphicsContext graphics, double x, double y) {
+        graphics.setFill(Color.web("#6e7976"));
+        graphics.fillRoundRect(x + 9, y + 20, 46, 21, 4, 4);
+        graphics.setFill(Color.web("#a1a59b"));
+        graphics.fillRect(x + 13, y + 23, 12, 14);
+        graphics.setStroke(Color.web("#a1a59b"));
+        graphics.setLineWidth(2);
+        graphics.strokeLine(x + 16, y + 41, x + 16, y + 53);
+        graphics.strokeLine(x + 48, y + 41, x + 48, y + 53);
+        graphics.setStroke(Color.web("#a94048"));
+        graphics.setLineWidth(1.5);
+        graphics.strokeLine(x + 37, y + 24, x + 43, y + 31);
+        graphics.strokeLine(x + 43, y + 31, x + 39, y + 36);
+    }
+
+    private void drawMedicalCabinet(GraphicsContext graphics, double x, double y) {
+        graphics.setFill(Color.rgb(0, 0, 0, 0.35));
+        graphics.fillOval(x + 16, y + 51, 35, 6);
+        graphics.setFill(Color.web("#48514f"));
+        graphics.fillRoundRect(x + 17, y + 9, 32, 45, 2, 2);
+        graphics.setStroke(Color.web("#9c9e94"));
+        graphics.setLineWidth(1.4);
+        graphics.strokeRect(x + 18, y + 10, 30, 43);
+        graphics.setStroke(Color.web("#303839"));
+        graphics.strokeLine(x + 18, y + 31, x + 48, y + 31);
+        graphics.setFill(Color.web("#aa9c7e"));
+        graphics.fillOval(x + 42, y + 26, 2.5, 2.5);
+        graphics.fillOval(x + 42, y + 46, 2.5, 2.5);
+        graphics.setFill(Color.web("#b34e4d"));
+        graphics.fillRect(x + 26, y + 15, 13, 2);
     }
 
     /** Builds a fresh post-key layout and guarantees a clear route from the player to the exit. */
@@ -973,6 +1805,7 @@ public class GameScreen extends BorderPane {
             return;
         }
 
+        fogLayer.setOpacity(getFlickerOpacity());
         double centerX = player.getX() + player.getWidth() / 2;
         double centerY = player.getY() + player.getHeight() / 2;
         if (Math.abs(centerX - lastFogCenterX) < 1
@@ -988,11 +1821,12 @@ public class GameScreen extends BorderPane {
             double mazeWidth = columns * TILE_SIZE;
             double mazeHeight = rows * TILE_SIZE;
             double fogExtent = Math.max(mazeWidth, mazeHeight) + outerRadius * 2;
+            Color fogColor = getThemeFogColor();
             Shape fogWithSightOpening = Shape.subtract(
                     new Rectangle(-fogExtent, -fogExtent, fogExtent * 3, fogExtent * 3),
                     new Circle(0, 0, outerRadius)
             );
-            fogWithSightOpening.setFill(FOG_COLOR.deriveColor(
+            fogWithSightOpening.setFill(fogColor.deriveColor(
                         0,
                         1,
                         1,
@@ -1012,8 +1846,8 @@ public class GameScreen extends BorderPane {
                     false,
                     CycleMethod.NO_CYCLE,
                     new Stop(sightRadius / outerRadius, Color.TRANSPARENT),
-                    new Stop(0.9, FOG_COLOR.deriveColor(0, 1, 1, getFogOpacity() * 0.55)),
-                    new Stop(1, FOG_COLOR.deriveColor(0, 1, 1, getFogOpacity()))
+                    new Stop(0.9, fogColor.deriveColor(0, 1, 1, getFogOpacity() * 0.55)),
+                    new Stop(1, fogColor.deriveColor(0, 1, 1, getFogOpacity()))
             ));
             fogLayer.getChildren().setAll(fogWithSightOpening, featheredEdge);
         }
@@ -1023,13 +1857,38 @@ public class GameScreen extends BorderPane {
     }
 
     private double getSightRadius() {
+        double themeRadius = campaignMap == CampaignMap.CEMETERY ? 132
+                : campaignMap == CampaignMap.HOSPITAL ? 145 : BASE_SIGHT_RADIUS;
         return Math.max(MIN_SIGHT_RADIUS,
-                BASE_SIGHT_RADIUS - (level - 1) * SIGHT_RADIUS_DECREASE_PER_LEVEL);
+                themeRadius - (level - 1) * SIGHT_RADIUS_DECREASE_PER_LEVEL);
     }
 
     private double getFogOpacity() {
         double levelProgress = (Math.max(1, Math.min(50, level)) - 1) / 49.0;
-        return LIGHT_FOG_OPACITY + (HEAVY_FOG_OPACITY - LIGHT_FOG_OPACITY) * levelProgress;
+        double opacity = LIGHT_FOG_OPACITY + (HEAVY_FOG_OPACITY - LIGHT_FOG_OPACITY) * levelProgress;
+        if (campaignMap == CampaignMap.CEMETERY) {
+            return Math.min(0.98, opacity + 0.12);
+        }
+        if (campaignMap == CampaignMap.HOSPITAL) {
+            return Math.min(0.98, opacity + 0.08);
+        }
+        return opacity;
+    }
+
+    private Color getThemeFogColor() {
+        return switch (campaignMap) {
+            case CEMETERY -> Color.rgb(4, 13, 8);
+            case HOSPITAL -> Color.rgb(7, 12, 16);
+            default -> FOG_COLOR;
+        };
+    }
+
+    private double getFlickerOpacity() {
+        if (campaignMap != CampaignMap.HOSPITAL) {
+            return 1;
+        }
+        double pulse = Math.sin(worldTime * 2.7) * Math.sin(worldTime * 0.73);
+        return pulse > 0.84 ? 0.72 : pulse < -0.94 ? 0.88 : 1;
     }
 
     private LinearGradient hauntedWallPaint(double x, double y) {
@@ -1056,23 +1915,90 @@ public class GameScreen extends BorderPane {
     }
 
     private Group createKeyVisual() {
+        if (campaignMap == CampaignMap.CEMETERY) {
+            return createCemeteryKeyVisual();
+        }
+        if (campaignMap == CampaignMap.HOSPITAL) {
+            return createHospitalKeyVisual();
+        }
+
         Circle ring = new Circle(8, 8, 5, Color.web("#f4d58d"));
         ring.setStroke(Color.web("#fff4c7"));
         ring.setStrokeWidth(1.5);
-        Circle hole = new Circle(8, 8, 2, Color.web("#3a2350"));
+        Circle hole = new Circle(8, 8, 2, Color.web("#2b1b22"));
         Line shaft = new Line(11.5, 11.5, 21, 21);
         shaft.setStroke(Color.web("#f4d58d"));
         shaft.setStrokeWidth(3);
+        Line bowTop = new Line(5, 4, 8, 1);
+        Line bowBottom = new Line(4, 12, 8, 15);
+        bowTop.setStroke(Color.web("#a87c46"));
+        bowBottom.setStroke(Color.web("#a87c46"));
+        bowTop.setStrokeWidth(1.5);
+        bowBottom.setStrokeWidth(1.5);
         Line toothOne = new Line(16, 16, 18, 14);
         Line toothTwo = new Line(18.5, 18.5, 20.5, 16.5);
         toothOne.setStroke(Color.web("#f4d58d"));
         toothTwo.setStroke(Color.web("#f4d58d"));
         toothOne.setStrokeWidth(3);
         toothTwo.setStrokeWidth(3);
-        return new Group(ring, hole, shaft, toothOne, toothTwo);
+        return new Group(bowTop, bowBottom, ring, hole, shaft, toothOne, toothTwo);
+    }
+
+    private Group createCemeteryKeyVisual() {
+        Group key = new Group();
+        Circle charm = new Circle(8, 8, 6.5, Color.web("#37473a"));
+        charm.setStroke(Color.web("#adb391"));
+        charm.setStrokeWidth(1.4);
+        Circle skull = new Circle(8, 7, 3.2, Color.web("#c1c2a3"));
+        Circle leftEye = new Circle(6.8, 7, 0.8, Color.web("#1c251d"));
+        Circle rightEye = new Circle(9.2, 7, 0.8, Color.web("#1c251d"));
+        Rectangle jaw = new Rectangle(6.5, 9.2, 3, 2.4);
+        jaw.setFill(Color.web("#a5aa8e"));
+        Line stem = new Line(13, 12, 22, 21);
+        stem.setStroke(Color.web("#b7b895"));
+        stem.setStrokeWidth(3);
+        Line toothOne = new Line(17, 16, 19, 14);
+        Line toothTwo = new Line(19, 18, 21, 16);
+        toothOne.setStroke(Color.web("#b7b895"));
+        toothTwo.setStroke(Color.web("#b7b895"));
+        toothOne.setStrokeWidth(2.5);
+        toothTwo.setStrokeWidth(2.5);
+        key.getChildren().addAll(charm, skull, leftEye, rightEye, jaw,
+                stem, toothOne, toothTwo);
+        key.setEffect(new DropShadow(8, Color.rgb(151, 190, 126, 0.78)));
+        return key;
+    }
+
+    private Group createHospitalKeyVisual() {
+        Group keyCard = new Group();
+        Rectangle card = new Rectangle(2, 5, 20, 13);
+        card.setArcWidth(3);
+        card.setArcHeight(3);
+        card.setFill(Color.web("#d4d4c6"));
+        card.setStroke(Color.web("#83928d"));
+        card.setStrokeWidth(1);
+        Rectangle strip = new Rectangle(4, 7, 16, 3);
+        strip.setFill(Color.web("#6f8c82"));
+        Circle photo = new Circle(7, 14, 2, Color.web("#323b3c"));
+        Line textLineOne = new Line(11, 13, 19, 13);
+        Line textLineTwo = new Line(11, 16, 18, 16);
+        textLineOne.setStroke(Color.web("#46524e"));
+        textLineTwo.setStroke(Color.web("#46524e"));
+        textLineOne.setStrokeWidth(0.8);
+        textLineTwo.setStrokeWidth(0.8);
+        keyCard.getChildren().addAll(card, strip, photo, textLineOne, textLineTwo);
+        keyCard.setRotate(-18);
+        keyCard.setEffect(new DropShadow(8, Color.rgb(164, 216, 196, 0.7)));
+        return keyCard;
     }
 
     private Group createExitVisual(boolean open) {
+        if (campaignMap == CampaignMap.CEMETERY) {
+            return createCemeteryGateVisual(open);
+        }
+        if (campaignMap == CampaignMap.HOSPITAL) {
+            return createHospitalExitVisual(open);
+        }
         Color border = Color.web("#8b7a82");
         Color panel = open ? Color.web("#35151b") : Color.web("#681b24");
         Group visual = new Group();
@@ -1148,13 +2074,101 @@ public class GameScreen extends BorderPane {
         return visual;
     }
 
+    private Group createCemeteryGateVisual(boolean open) {
+        Group gate = new Group();
+        Rectangle frameShadow = new Rectangle(0, 4, 32, 34);
+        frameShadow.setFill(Color.rgb(0, 0, 0, 0.4));
+        Rectangle frame = new Rectangle(1, 2, 30, 34);
+        frame.setArcWidth(5);
+        frame.setArcHeight(5);
+        frame.setFill(Color.web("#262c24"));
+        frame.setStroke(Color.web("#a2a98d"));
+        frame.setStrokeWidth(2);
+        gate.getChildren().addAll(frameShadow, frame);
+        Rectangle gateTop = new Rectangle(4, 5, 24, 3);
+        gateTop.setFill(Color.web("#8f9981"));
+        gate.getChildren().add(gateTop);
+        for (int index = 0; index < 4; index++) {
+            Line bar = new Line(6 + index * 7, 10, 6 + index * 7, 33);
+            bar.setStroke(open ? Color.web("#9ba58b") : Color.web("#66705e"));
+            bar.setStrokeWidth(2);
+            gate.getChildren().add(bar);
+            if (index < 3) {
+                Line spear = new Line(4 + index * 7, 10, 8 + index * 7, 10);
+                spear.setStroke(Color.web("#c1c4a7"));
+                spear.setStrokeWidth(1.3);
+                gate.getChildren().add(spear);
+            }
+        }
+        Line crossbar = new Line(3, 20, 29, 20);
+        crossbar.setStroke(Color.web("#9ba58b"));
+        crossbar.setStrokeWidth(2);
+        gate.getChildren().add(crossbar);
+        Circle crest = new Circle(16, 4, 3, Color.web("#53624e"));
+        crest.setStroke(Color.web("#b5bc9e"));
+        crest.setStrokeWidth(1);
+        gate.getChildren().add(crest);
+        if (open) {
+            gate.setEffect(new DropShadow(13, Color.rgb(131, 201, 142, 0.82)));
+        }
+        return gate;
+    }
+
+    private Group createHospitalExitVisual(boolean open) {
+        Group exitMarker = new Group();
+        Rectangle sign = new Rectangle(1, 2, 30, 34);
+        sign.setArcWidth(3);
+        sign.setArcHeight(3);
+        sign.setFill(open ? Color.web("#263b36") : Color.web("#3a2225"));
+        sign.setStroke(open ? Color.web("#80c6a5") : Color.web("#ad5c5d"));
+        sign.setStrokeWidth(2);
+        Circle lampGlow = new Circle(16, 7, 9,
+                open ? Color.rgb(110, 237, 176, 0.24) : Color.rgb(221, 58, 54, 0.17));
+        lampGlow.setEffect(new Glow(0.9));
+        Label exitText = new Label("EXIT");
+        exitText.setLayoutX(3);
+        exitText.setLayoutY(12);
+        exitText.setStyle("-fx-text-fill: " + (open ? "#9cf2c2" : "#ef9590")
+                + ";-fx-font-family: sans-serif;-fx-font-size: 8px;-fx-font-weight: bold;");
+        Line arrow = new Line(6, 28, 25, 28);
+        arrow.setStroke(open ? Color.web("#9cf2c2") : Color.web("#ec7771"));
+        arrow.setStrokeWidth(2);
+        Line arrowHeadOne = new Line(25, 28, 20, 24);
+        Line arrowHeadTwo = new Line(25, 28, 20, 32);
+        arrowHeadOne.setStroke(arrow.getStroke());
+        arrowHeadTwo.setStroke(arrow.getStroke());
+        arrowHeadOne.setStrokeWidth(2);
+        arrowHeadTwo.setStrokeWidth(2);
+        exitMarker.getChildren().addAll(lampGlow, sign, exitText, arrow,
+                arrowHeadOne, arrowHeadTwo);
+        if (open) {
+            exitMarker.setEffect(new DropShadow(12, Color.rgb(114, 230, 165, 0.75)));
+        }
+        return exitMarker;
+    }
+
     private Group createGhostVisual() {
         SVGPath body = new SVGPath();
         body.setContent(loadSvgPathData("/img/ghost/haunting_spirit.svg"));
-        body.setFill(Color.web("#d7e4ed", 0.88));
-        body.setStroke(Color.web("#a9bfd1", 0.9));
+        Color spiritColor = switch (campaignMap) {
+            case CEMETERY -> Color.web("#c4d4af", 0.88);
+            case HOSPITAL -> Color.web("#cad8d5", 0.88);
+            default -> Color.web("#d7e4ed", 0.88);
+        };
+        Color spiritEdge = switch (campaignMap) {
+            case CEMETERY -> Color.web("#91bd88", 0.9);
+            case HOSPITAL -> Color.web("#90c4c9", 0.9);
+            default -> Color.web("#a9bfd1", 0.9);
+        };
+        Color spiritGlow = switch (campaignMap) {
+            case CEMETERY -> Color.rgb(113, 181, 113, 0.8);
+            case HOSPITAL -> Color.rgb(99, 190, 205, 0.8);
+            default -> Color.rgb(166, 105, 255, 0.8);
+        };
+        body.setFill(spiritColor);
+        body.setStroke(spiritEdge);
         body.setStrokeWidth(1.5);
-        body.setEffect(new DropShadow(20, Color.rgb(166, 105, 255, 0.8)));
+        body.setEffect(new DropShadow(20, spiritGlow));
 
         Circle leftEye = new Circle(23, 28, 3.1, Color.web("#291936"));
         Circle rightEye = new Circle(41, 28, 3.1, Color.web("#291936"));
@@ -1228,6 +2242,7 @@ public class GameScreen extends BorderPane {
     }
 
     private void update(double delta) {
+        worldTime += delta;
         timerManager.update(delta);
         updatePlayer(delta);
         checkKeyCollision();
@@ -1571,7 +2586,7 @@ public class GameScreen extends BorderPane {
         timerLabel.setVisible(screenManager.getSettingsManager().isShowTimer());
         if (fieldNotesObjectiveLabel != null) {
             boolean hasKey = key.isCollected();
-            fieldNotesObjectiveLabel.setText(hasKey ? "REACH THE EXIT" : "FIND THE KEY");
+            fieldNotesObjectiveLabel.setText(hasKey ? getExitObjective() : getKeyObjective());
             fieldNotesObjectiveLabel.setTextFill(hasKey
                     ? Color.web("#79f2c0") : Color.web("#f4d58d"));
         }
@@ -1581,13 +2596,13 @@ public class GameScreen extends BorderPane {
                 lifeManager.getLives());
         scoreLabel.setText(String.format("SCORE: %04d", scoreManager.getCurrentLevelScore()));
         if (!exit.isActive()) {
-            objectiveLabel.setText("FIND THE KEY");
+            objectiveLabel.setText(getKeyObjective());
             objectiveLabel.setTextFill(Color.web("#f4d58d"));
         } else if (exitMoved && !exit.isReached()) {
             objectiveLabel.setText("THE EXIT MOVED");
             objectiveLabel.setTextFill(Color.web("#ff9f68"));
         } else {
-            objectiveLabel.setText("EXIT: OPEN");
+            objectiveLabel.setText(getExitObjective());
             objectiveLabel.setTextFill(Color.web("#79f2c0"));
         }
         if (ghostActive && ghostCaughtMessageTime > 0) {
@@ -1602,6 +2617,14 @@ public class GameScreen extends BorderPane {
                 objectiveLabel.setTextFill(Color.web("#ff8b6b"));
             }
         }
+    }
+
+    private String getKeyObjective() {
+        return campaignMap.getKeyObjective();
+    }
+
+    private String getExitObjective() {
+        return campaignMap.getExitObjective();
     }
 
     private String createLivesText() {

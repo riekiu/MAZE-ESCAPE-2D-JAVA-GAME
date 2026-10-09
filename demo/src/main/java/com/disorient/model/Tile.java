@@ -4,7 +4,8 @@ public class Tile {
 
     public enum Type {
         FLOOR,
-        WALL
+        WALL,
+        OBSTACLE
     }
 
     private final int row;
@@ -30,6 +31,6 @@ public class Tile {
     }
 
     public boolean isWall() {
-        return type == Type.WALL;
+        return type != Type.FLOOR;
     }
 }

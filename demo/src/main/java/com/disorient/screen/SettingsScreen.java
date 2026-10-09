@@ -7,6 +7,8 @@ import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TextFormatter;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -45,10 +47,7 @@ public class SettingsScreen extends StackPane {
         // =========================
         // BACKGROUND
         // =========================
-        setStyle(
-                "-fx-background-color: linear-gradient("
-                + "to bottom, #050008, #12051a, #050008);"
-        );
+        HorrorUiTheme.applyBackdrop(this);
 
         // =========================
         // TITLE
@@ -57,9 +56,10 @@ public class SettingsScreen extends StackPane {
 
         title.setStyle(
                 "-fx-text-fill: white;"
-                + "-fx-font-size: 42px;"
+                + "-fx-font-size: 36px;"
                 + "-fx-font-weight: bold;"
                 + "-fx-letter-spacing: 5px;"
+                + "-fx-font-family: Georgia;"
                 + "-fx-effect: dropshadow(gaussian, #b84cff, 20, 0.6, 0, 0);"
         );
 
@@ -121,6 +121,48 @@ public class SettingsScreen extends StackPane {
                 createSliderRow("Music Volume", musicSlider),
                 createSliderRow("SFX Volume", sfxSlider)
         );
+        audioBox.setPadding(new javafx.geometry.Insets(14, 18, 14, 18));
+        audioBox.setStyle("-fx-background-color: rgba(22, 15, 29, 0.88);"
+                + "-fx-border-color: rgba(169, 135, 93, 0.75);-fx-border-radius: 8px;"
+                + "-fx-background-radius: 8px;");
+
+        Label playerLabel = new Label("LEADERBOARD NAME");
+        playerLabel.setStyle("-fx-text-fill: #e8c98a;-fx-font-size: 10px;-fx-font-weight: bold;"
+                + "-fx-letter-spacing: 1.5px;");
+        TextField playerNameField = new TextField(manager.getPlayerName());
+        playerNameField.setPromptText("Enter a name");
+        playerNameField.setPrefColumnCount(16);
+        playerNameField.setTextFormatter(new TextFormatter<String>(change ->
+                change.getControlNewText().length() <= 20
+                        && !change.getText().contains("\n") ? change : null));
+        playerNameField.setStyle("-fx-background-color: #120d18;-fx-border-color: #72557d;"
+                + "-fx-border-radius: 5px;-fx-background-radius: 5px;-fx-text-fill: #fff3dc;"
+                + "-fx-prompt-text-fill: #887995;-fx-highlight-fill: #754c8b;");
+        Label playerNameStatus = new Label("Displayed with your personal best times.");
+        playerNameStatus.setStyle("-fx-text-fill: #ad9ab7;-fx-font-size: 10px;");
+        Button savePlayerName = createButton("SAVE NAME");
+        Runnable saveName = () -> {
+            String requestedName = playerNameField.getText();
+            if (requestedName == null || requestedName.isBlank()) {
+                playerNameStatus.setText("Enter a name before saving.");
+                playerNameStatus.setStyle("-fx-text-fill: #e99283;-fx-font-size: 10px;");
+                return;
+            }
+            screenManager.savePlayerName(requestedName);
+            playerNameField.setText(manager.getPlayerName());
+            playerNameStatus.setText("Name saved for leaderboard records.");
+            playerNameStatus.setStyle("-fx-text-fill: #9bd5ae;-fx-font-size: 10px;");
+        };
+        savePlayerName.setOnAction(event -> saveName.run());
+        playerNameField.setOnAction(event -> saveName.run());
+        HBox nameInput = new HBox(10, playerNameField, savePlayerName);
+        nameInput.setAlignment(Pos.CENTER);
+        VBox playerNameBox = new VBox(8, playerLabel, nameInput, playerNameStatus);
+        playerNameBox.setAlignment(Pos.CENTER);
+        playerNameBox.setPadding(new javafx.geometry.Insets(12, 18, 12, 18));
+        playerNameBox.setStyle("-fx-background-color: rgba(22, 15, 29, 0.88);"
+                + "-fx-border-color: rgba(169, 135, 93, 0.75);-fx-border-radius: 8px;"
+                + "-fx-background-radius: 8px;");
 
         // =========================
         // RESET BUTTONS
@@ -182,18 +224,24 @@ public class SettingsScreen extends StackPane {
         // MAIN CONTENT
         // =========================
         VBox content = new VBox(
-                12,
+                11,
                 title,
                 subtitle,
                 audioTitle,
                 audioBox,
+                playerNameBox,
                 resetButtons,
                 backButton
         );
 
         content.setAlignment(Pos.CENTER);
 
-        content.setMaxWidth(500);
+        content.setMaxWidth(590);
+        content.setPadding(new javafx.geometry.Insets(24, 30, 24, 30));
+        content.setStyle("-fx-background-color: rgba(13, 8, 19, 0.94);"
+                + "-fx-background-radius: 14px;-fx-border-color: #987452;"
+                + "-fx-border-radius: 14px;-fx-border-width: 1.5px;");
+        content.setEffect(new javafx.scene.effect.DropShadow(24, javafx.scene.paint.Color.rgb(0, 0, 0, 0.55)));
 
         getChildren().add(content);
     }
@@ -266,56 +314,9 @@ public class SettingsScreen extends StackPane {
     private Button createButton(String text) {
 
         Button button = new Button(text);
-        button.setOnMousePressed(event -> ScreenManager.getActive().getAudioManager().playClick());
-
         button.setPrefWidth(180);
         button.setPrefHeight(42);
-
-        button.setStyle(
-                "-fx-background-color: #170d22;"
-                + "-fx-border-color: #6d3a91;"
-                + "-fx-border-width: 1.5px;"
-                + "-fx-border-radius: 8px;"
-                + "-fx-background-radius: 8px;"
-                + "-fx-text-fill: white;"
-                + "-fx-font-size: 12px;"
-                + "-fx-font-weight: bold;"
-                + "-fx-letter-spacing: 1.5px;"
-                + "-fx-cursor: hand;"
-        );
-
-        button.setOnMouseEntered(event -> {
-
-            button.setStyle(
-                    "-fx-background-color: #35104a;"
-                    + "-fx-border-color: #b84cff;"
-                    + "-fx-border-width: 2px;"
-                    + "-fx-border-radius: 8px;"
-                    + "-fx-background-radius: 8px;"
-                    + "-fx-text-fill: white;"
-                    + "-fx-font-size: 12px;"
-                    + "-fx-font-weight: bold;"
-                    + "-fx-letter-spacing: 1.5px;"
-                    + "-fx-cursor: hand;"
-                    + "-fx-effect: dropshadow(gaussian, #b84cff, 15, 0.5, 0, 0);"
-            );
-        });
-
-        button.setOnMouseExited(event -> {
-
-            button.setStyle(
-                    "-fx-background-color: #170d22;"
-                    + "-fx-border-color: #6d3a91;"
-                    + "-fx-border-width: 1.5px;"
-                    + "-fx-border-radius: 8px;"
-                    + "-fx-background-radius: 8px;"
-                    + "-fx-text-fill: white;"
-                    + "-fx-font-size: 12px;"
-                    + "-fx-font-weight: bold;"
-                    + "-fx-letter-spacing: 1.5px;"
-                    + "-fx-cursor: hand;"
-            );
-        });
+        HorrorUiTheme.styleButton(button, ScreenManager.getActive().getAudioManager());
 
         return button;
     }

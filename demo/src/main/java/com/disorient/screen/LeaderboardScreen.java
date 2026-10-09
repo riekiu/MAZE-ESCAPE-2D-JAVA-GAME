@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.disorient.manager.LeaderboardManager;
 import com.disorient.manager.ScreenManager;
+import com.disorient.model.CampaignMap;
 import com.disorient.model.LeaderboardEntry;
 import com.disorient.model.LevelData;
 import javafx.geometry.Insets;
@@ -30,7 +31,7 @@ public class LeaderboardScreen extends StackPane {
     public LeaderboardScreen(LeaderboardManager leaderboardManager, ScreenManager screenManager) {
         List<LeaderboardEntry> entries = java.util.Objects.requireNonNull(
                 leaderboardManager, "leaderboardManager").getEntries();
-        setStyle("-fx-background-color: linear-gradient(to bottom right, #07040b, #1a1024, #08050d);");
+        HorrorUiTheme.applyBackdrop(this);
 
         Button back = createButton("BACK TO MAIN MENU", screenManager);
         back.setOnAction(event -> screenManager.showMainMenu());
@@ -47,8 +48,10 @@ public class LeaderboardScreen extends StackPane {
         heading.setAlignment(Pos.CENTER);
 
         int totalStars = 0;
-        for (int level = 1; level <= screenManager.getGameManager().getTotalLevels(); level++) {
-            totalStars += screenManager.getGameManager().getStarsForLevel(level);
+        for (CampaignMap map : CampaignMap.values()) {
+            for (int level = 1; level <= screenManager.getGameManager().getTotalLevels(); level++) {
+                totalStars += screenManager.getGameManager().getStarsForLevel(map, level);
+            }
         }
         int fastestSeconds = entries.stream()
                 .mapToInt(LeaderboardEntry::getCompletionTime)
@@ -58,8 +61,9 @@ public class LeaderboardScreen extends StackPane {
         HBox summary = new HBox(12,
                 createStat("LEVELS RECORDED",
                         String.format("%02d / %02d", entries.size(), screenManager.getGameManager().getTotalLevels())),
+                createStat("PLAYER", screenManager.getSettingsManager().getPlayerName()),
                 createStat("FASTEST ESCAPE", fastestSeconds < 0 ? "--:--" : formatTime(fastestSeconds)),
-                createStat("CAMPAIGN STARS", totalStars + " / 150"));
+                createStat("CAMPAIGN STARS", totalStars + " / 450"));
         summary.setAlignment(Pos.CENTER);
         summary.setPadding(new Insets(16, 0, 18, 0));
 
@@ -80,13 +84,15 @@ public class LeaderboardScreen extends StackPane {
             empty.setPadding(new Insets(42, 10, 42, 10));
             records.getChildren().add(empty);
         } else {
-            HBox header = createRecordRow("LEVEL", "DIFFICULTY", "BEST TIME", "RATING", "STARS", true);
+            HBox header = createRecordRow("LEVEL", "PLAYER", "DIFFICULTY",
+                    "BEST TIME", "RATING", "STARS", true);
             records.getChildren().add(header);
             for (LeaderboardEntry entry : entries) {
-                int stars = screenManager.getGameManager().getStarsForLevel(entry.getLevel());
+                int stars = getBestStarsForLevel(screenManager, entry.getLevel());
                 LevelData levelData = new LevelData(entry.getLevel());
                 records.getChildren().add(createRecordRow(
                         String.format("%02d", entry.getLevel()),
+                        entry.getPlayerName(),
                         levelData.getDifficulty().toUpperCase(),
                         formatTime(entry.getCompletionTime()),
                         formatSpeedRating(entry),
@@ -120,7 +126,7 @@ public class LeaderboardScreen extends StackPane {
         layout.setPadding(new Insets(28, 38, 26, 38));
         layout.setMaxWidth(1120);
         layout.setStyle("-fx-background-color: rgba(13, 8, 19, 0.96);"
-                + "-fx-background-radius: 14px;-fx-border-color: #704a86;-fx-border-radius: 14px;"
+                + "-fx-background-radius: 14px;-fx-border-color: #987452;-fx-border-radius: 14px;"
                 + "-fx-border-width: 1.5px;");
         StackPane.setAlignment(layout, Pos.CENTER);
         StackPane.setMargin(layout, new Insets(24));
@@ -144,14 +150,16 @@ public class LeaderboardScreen extends StackPane {
     }
 
     private HBox createRecordRow(
-            String level, String difficulty, String time, String rating, String stars, boolean header
+            String level, String player, String difficulty, String time,
+            String rating, String stars, boolean header
     ) {
         HBox row = new HBox(
-                createCell(level, 90, header),
-                createCell(difficulty, 200, header),
-                createCell(time, 145, header),
-                createCell(rating, 190, header),
-                createCell(stars, 100, header));
+                createCell(level, 62, header),
+                createCell(player, 150, header),
+                createCell(difficulty, 155, header),
+                createCell(time, 125, header),
+                createCell(rating, 145, header),
+                createCell(stars, 70, header));
         row.setAlignment(Pos.CENTER_LEFT);
         row.setPadding(new Insets(0, 8, 0, 8));
         row.setMinHeight(header ? 42 : 40);
@@ -176,6 +184,14 @@ public class LeaderboardScreen extends StackPane {
         return String.format("%02d:%02d", seconds / 60, seconds % 60);
     }
 
+    private int getBestStarsForLevel(ScreenManager screenManager, int level) {
+        int best = 0;
+        for (CampaignMap map : CampaignMap.values()) {
+            best = Math.max(best, screenManager.getGameManager().getStarsForLevel(map, level));
+        }
+        return best;
+    }
+
     private String formatSpeedRating(LeaderboardEntry entry) {
         double completionRatio = (double) entry.getCompletionTime()
                 / new LevelData(entry.getLevel()).getTimeLimit();
@@ -188,20 +204,9 @@ public class LeaderboardScreen extends StackPane {
 
     private Button createButton(String text, ScreenManager screenManager) {
         Button button = new Button(text);
-        button.setOnMousePressed(event -> screenManager.getAudioManager().playClick());
         button.setPrefWidth(250);
         button.setPrefHeight(42);
-        button.setStyle("-fx-background-color: #21142d;-fx-border-color: #795692;"
-                + "-fx-border-radius: 7px;-fx-background-radius: 7px;-fx-text-fill: #f4e7ce;"
-                + "-fx-font-size: 11px;-fx-font-weight: bold;-fx-padding: 10px 16px;-fx-cursor: hand;");
-        button.setOnMouseEntered(event -> button.setStyle(
-                "-fx-background-color: #392449;-fx-border-color: #c18bdb;-fx-border-radius: 7px;"
-                        + "-fx-background-radius: 7px;-fx-text-fill: white;-fx-font-size: 11px;"
-                        + "-fx-font-weight: bold;-fx-padding: 10px 16px;-fx-cursor: hand;"));
-        button.setOnMouseExited(event -> button.setStyle(
-                "-fx-background-color: #21142d;-fx-border-color: #795692;-fx-border-radius: 7px;"
-                        + "-fx-background-radius: 7px;-fx-text-fill: #f4e7ce;-fx-font-size: 11px;"
-                        + "-fx-font-weight: bold;-fx-padding: 10px 16px;-fx-cursor: hand;"));
+        HorrorUiTheme.styleButton(button, screenManager.getAudioManager());
         return button;
     }
 }

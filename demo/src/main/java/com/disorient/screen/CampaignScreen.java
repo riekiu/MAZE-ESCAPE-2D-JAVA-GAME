@@ -1,6 +1,7 @@
 package com.disorient.screen;
 
 import com.disorient.manager.ScreenManager;
+import com.disorient.model.CampaignMap;
 import com.disorient.model.LevelData;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -24,15 +25,21 @@ public class CampaignScreen extends BorderPane {
     private static final String MUTED = "#ad9ab7";
 
     private final ScreenManager screenManager;
+    private final CampaignMap campaignMap;
     private Label previewChapter;
     private Label previewDetail;
     private Button enterButton;
     private int previewLevel;
 
     public CampaignScreen(ScreenManager screenManager) {
+        this(screenManager, CampaignMap.MANSION);
+    }
+
+    public CampaignScreen(ScreenManager screenManager, CampaignMap campaignMap) {
         this.screenManager = screenManager;
+        this.campaignMap = campaignMap;
         setPadding(new Insets(24, 38, 20, 38));
-        setStyle("-fx-background-color: linear-gradient(to bottom right, #08050e, #1c1028, #09060f);");
+        setStyle("-fx-background-color: linear-gradient(to bottom right, #08050e, #20132a, #09060f);");
 
         setTop(createHeader());
         setCenter(createLevelMap());
@@ -40,22 +47,23 @@ public class CampaignScreen extends BorderPane {
     }
 
     private VBox createHeader() {
-        Button back = createActionButton("←  MAIN MENU", false);
-        back.setOnAction(event -> screenManager.showMainMenu());
+        Button back = createActionButton("←  MAP LOCATIONS", false);
+        back.setOnAction(event -> screenManager.showCampaignMaps());
 
-        Label eyebrow = new Label("THE HAUNTED HOUSE COLLECTION");
+        Label eyebrow = new Label("SELECT A LEVEL");
         eyebrow.setStyle("-fx-text-fill: #ad8ac2;-fx-font-size: 10px;-fx-font-weight: bold;"
                 + "-fx-letter-spacing: 3px;");
-        Label title = new Label("CAMPAIGN");
+        Label title = new Label(campaignMap.getDisplayName().toUpperCase());
         title.setStyle("-fx-text-fill: #f4e7ce;-fx-font-size: 34px;-fx-font-weight: bold;"
-                + "-fx-letter-spacing: 7px;-fx-effect: dropshadow(gaussian, #8b2cff, 18, 0.45, 0, 0);");
+                + "-fx-font-family: Georgia;-fx-letter-spacing: 7px;"
+                + "-fx-effect: dropshadow(gaussian, #8b2cff, 18, 0.45, 0, 0);");
         VBox heading = new VBox(5, eyebrow, title);
         heading.setAlignment(Pos.CENTER);
 
         int total = screenManager.getGameManager().getTotalLevels();
-        int unlocked = screenManager.getGameManager().getHighestUnlockedLevel();
-        int current = screenManager.getGameManager().getCurrentLevel();
-        Label progressText = new Label(String.format("HOUSE %02d / %02d", unlocked, total));
+        int unlocked = screenManager.getGameManager().getHighestUnlockedLevel(campaignMap);
+        int current = screenManager.getGameManager().getCurrentLevel(campaignMap);
+        Label progressText = new Label(String.format("LEVELS %02d / %02d", unlocked, total));
         progressText.setStyle("-fx-text-fill: " + GOLD + ";-fx-font-size: 11px;-fx-font-weight: bold;"
                 + "-fx-letter-spacing: 1px;");
         ProgressBar progress = new ProgressBar((double) unlocked / total);
@@ -82,39 +90,41 @@ public class CampaignScreen extends BorderPane {
         previewDetail.setStyle("-fx-text-fill: #c7b8d0;-fx-font-size: 12px;");
         VBox text = new VBox(6, previewChapter, previewDetail);
 
-        enterButton = createActionButton("ENTER HOUSE", true);
-        enterButton.setOnAction(event -> screenManager.startLevel(previewLevel));
+        enterButton = createActionButton("PLAY LEVEL", true);
+        enterButton.setOnAction(event -> screenManager.startCampaignMapLevel(campaignMap, previewLevel));
         HBox card = new HBox(18, text, enterButton);
         card.setAlignment(Pos.CENTER_LEFT);
         card.setPadding(new Insets(13, 18, 13, 18));
-        card.setStyle("-fx-background-color: linear-gradient(to right, rgba(72,35,91,0.82), rgba(24,14,34,0.94));"
-                + "-fx-border-color: #9568a8;-fx-border-width: 1px;-fx-border-radius: 9px;"
+        card.setStyle("-fx-background-color: linear-gradient(to right, rgba(55,43,64,0.94), rgba(18,14,24,0.98));"
+                + "-fx-border-color: #a9875d;-fx-border-width: 1px;-fx-border-radius: 9px;"
                 + "-fx-background-radius: 9px;");
         card.setEffect(new DropShadow(15, Color.rgb(105, 43, 145, 0.22)));
         HBox.setHgrow(text, Priority.ALWAYS);
-        updateLevelPreview(currentLevel, screenManager.getGameManager().isLevelUnlocked(currentLevel));
+        updateLevelPreview(currentLevel,
+                screenManager.getGameManager().isLevelUnlocked(campaignMap, currentLevel));
         return card;
     }
 
     private void updateLevelPreview(int level, boolean unlocked) {
         previewLevel = level;
         LevelData levelData = new LevelData(level);
-        int stars = screenManager.getGameManager().getStarsForLevel(level);
-        String heading = level == screenManager.getGameManager().getCurrentLevel()
+        int stars = screenManager.getGameManager().getStarsForLevel(campaignMap, level);
+        int currentLevel = screenManager.getGameManager().getCurrentLevel(campaignMap);
+        String heading = level == currentLevel
                 ? "YOUR NEXT HAUNT" : unlocked ? "LEVEL PREVIEW" : "SEALED FLOOR";
         previewChapter.setText(String.format("%s  |  LEVEL %02d", heading, level));
         previewDetail.setText(String.format("%s  |  %d x %d maze  |  %d seconds  |  BEST: %d/3 STARS",
-                levelData.getDifficulty().toUpperCase(), levelData.getGridSize(),
-                levelData.getGridSize(), levelData.getTimeLimit(), stars));
-        enterButton.setText(unlocked ? "ENTER HOUSE" : "SEALED");
+                levelData.getDifficulty().toUpperCase(), campaignMap.getGridWidth(levelData),
+                campaignMap.getGridHeight(levelData), levelData.getTimeLimit(), stars));
+        enterButton.setText(unlocked ? "PLAY LEVEL" : "SEALED");
         enterButton.setDisable(!unlocked);
     }
 
     private ScrollPane createLevelMap() {
         int total = screenManager.getGameManager().getTotalLevels();
-        int current = screenManager.getGameManager().getCurrentLevel();
+        int current = screenManager.getGameManager().getCurrentLevel(campaignMap);
 
-        Label sectionTitle = new Label("THE HOUSE DIRECTORY");
+        Label sectionTitle = new Label(campaignMap.getDisplayName().toUpperCase() + " LEVELS");
         sectionTitle.setStyle("-fx-text-fill: #f0dfc1;-fx-font-size: 14px;-fx-font-weight: bold;"
                 + "-fx-letter-spacing: 2px;");
         Label sectionHint = new Label("Stars show your best life rating for each completed floor.");
@@ -127,22 +137,22 @@ public class CampaignScreen extends BorderPane {
         levels.setVgap(12);
         levels.setAlignment(Pos.TOP_CENTER);
         for (int level = 1; level <= total; level++) {
-            boolean unlocked = screenManager.getGameManager().isLevelUnlocked(level);
+            boolean unlocked = screenManager.getGameManager().isLevelUnlocked(campaignMap, level);
             boolean active = level == current;
-            int stars = screenManager.getGameManager().getStarsForLevel(level);
+            int stars = screenManager.getGameManager().getStarsForLevel(campaignMap, level);
             boolean cleared = stars > 0;
             Button tile = createLevelTile(level, unlocked, active, cleared, stars);
             int selectedLevel = level;
             tile.setOnAction(event -> {
-                if (unlocked) screenManager.startLevel(selectedLevel);
+                if (unlocked) screenManager.startCampaignMapLevel(campaignMap, selectedLevel);
             });
             levels.add(tile, (level - 1) % 5, (level - 1) / 5);
         }
 
         VBox mapContent = new VBox(sectionHeading, levels);
         mapContent.setPadding(new Insets(0, 16, 18, 16));
-        mapContent.setStyle("-fx-background-color: rgba(10,7,16,0.55);"
-                + "-fx-border-color: rgba(133,94,154,0.55);-fx-border-width: 1px;"
+        mapContent.setStyle("-fx-background-color: rgba(10,7,16,0.72);"
+                + "-fx-border-color: rgba(169,135,93,0.60);-fx-border-width: 1px;"
                 + "-fx-border-radius: 10px;-fx-background-radius: 10px;");
 
         ScrollPane scroll = new ScrollPane(mapContent);
@@ -187,13 +197,13 @@ public class CampaignScreen extends BorderPane {
 
     private String levelTileStyle(boolean unlocked, boolean active) {
         if (active) {
-            return "-fx-background-color: linear-gradient(to bottom, #563467, #291934);"
-                    + "-fx-border-color: #e4c280;-fx-border-width: 1.5px;-fx-border-radius: 7px;"
+            return "-fx-background-color: linear-gradient(to bottom, #4d3e50, #211a28);"
+                    + "-fx-border-color: #e4c280;-fx-border-width: 1.8px;-fx-border-radius: 7px;"
                     + "-fx-background-radius: 7px;-fx-cursor: hand;";
         }
         if (unlocked) {
-            return "-fx-background-color: linear-gradient(to bottom, #281b31, #17111f);"
-                    + "-fx-border-color: #674b75;-fx-border-width: 1px;-fx-border-radius: 7px;"
+            return "-fx-background-color: linear-gradient(to bottom, #302734, #17131b);"
+                    + "-fx-border-color: #765f4c;-fx-border-width: 1px;-fx-border-radius: 7px;"
                     + "-fx-background-radius: 7px;-fx-cursor: hand;";
         }
         return "-fx-background-color: rgba(20,17,25,0.72);-fx-border-color: #37303c;"
@@ -201,8 +211,8 @@ public class CampaignScreen extends BorderPane {
     }
 
     private String levelTileHoverStyle(boolean active) {
-        return "-fx-background-color: linear-gradient(to bottom, #512a63, #2c1937);"
-                + "-fx-border-color: " + (active ? GOLD : "#c18bdb") + ";-fx-border-width: 1.5px;"
+        return "-fx-background-color: linear-gradient(to bottom, #56445a, #2c2133);"
+                + "-fx-border-color: " + (active ? GOLD : "#d7b67a") + ";-fx-border-width: 1.5px;"
                 + "-fx-border-radius: 7px;-fx-background-radius: 7px;-fx-cursor: hand;"
                 + "-fx-effect: dropshadow(gaussian, #8b2cff, 12, 0.3, 0, 0);";
     }
@@ -220,14 +230,14 @@ public class CampaignScreen extends BorderPane {
     private Button createActionButton(String text, boolean primary) {
         Button button = new Button(text);
         button.setPadding(new Insets(10, 15, 10, 15));
-        button.setStyle(primary
-                ? "-fx-background-color: #6b3c7e;-fx-border-color: #d7b67a;-fx-border-radius: 6px;"
-                    + "-fx-background-radius: 6px;-fx-text-fill: #fff1d4;-fx-font-size: 10px;"
-                    + "-fx-font-weight: bold;-fx-letter-spacing: 1px;-fx-cursor: hand;"
-                : "-fx-background-color: rgba(28,19,36,0.8);-fx-border-color: #6e5379;"
-                    + "-fx-border-radius: 6px;-fx-background-radius: 6px;-fx-text-fill: #d6c6dc;"
-                    + "-fx-font-size: 10px;-fx-font-weight: bold;-fx-letter-spacing: 1px;-fx-cursor: hand;");
-        button.setOnMousePressed(event -> screenManager.getAudioManager().playClick());
+        HorrorUiTheme.styleButton(button, screenManager.getAudioManager());
+        if (primary) {
+            button.setStyle("-fx-background-color: linear-gradient(to bottom, #593b64, #2c2035);"
+                    + "-fx-border-color: #e5c488;-fx-border-width: 1.5px;-fx-border-radius: 6px;"
+                    + "-fx-background-radius: 6px;-fx-text-fill: #fff3dc;-fx-font-family: Georgia;"
+                    + "-fx-font-size: 11px;-fx-font-weight: bold;-fx-letter-spacing: 1.2px;"
+                    + "-fx-padding: 11px 18px;-fx-cursor: hand;");
+        }
         return button;
     }
 }

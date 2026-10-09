@@ -1,6 +1,7 @@
 package com.disorient.screen;
 
 import com.disorient.manager.ScreenManager;
+import com.disorient.model.CampaignMap;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -18,6 +19,11 @@ public class GameOverScreen extends StackPane {
     }
 
     public GameOverScreen(int level, int remainingLives, ScreenManager screenManager) {
+        this(level, remainingLives, screenManager, CampaignMap.MANSION);
+    }
+
+    public GameOverScreen(
+            int level, int remainingLives, ScreenManager screenManager, CampaignMap campaignMap) {
 
         // =========================
         // BACKGROUND
@@ -44,7 +50,7 @@ public class GameOverScreen extends StackPane {
         // MESSAGE
         // =========================
         Label message = new Label(
-                "THE HAUNTED HOUSE HAS CLAIMED YOU..."
+                "THE " + campaignMap.getDisplayName().toUpperCase() + " HAS CLAIMED YOU..."
         );
 
         message.setStyle(
@@ -91,7 +97,7 @@ public class GameOverScreen extends StackPane {
                 = createButton("CAMPAIGN");
 
         campaignButton.setOnAction(event -> {
-            screenManager.showCampaign();
+            screenManager.showCampaignMapLevels(campaignMap);
         });
 
         // =========================

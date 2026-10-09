@@ -18,10 +18,7 @@ public class CreditsScreen extends StackPane {
         // =========================
         // BACKGROUND
         // =========================
-        setStyle(
-                "-fx-background-color: linear-gradient("
-                + "to bottom, #050008, #12051a, #050008);"
-        );
+        HorrorUiTheme.applyBackdrop(this);
 
         // =========================
         // TITLE
@@ -30,9 +27,10 @@ public class CreditsScreen extends StackPane {
 
         title.setStyle(
                 "-fx-text-fill: white;"
-                + "-fx-font-size: 42px;"
+                + "-fx-font-size: 36px;"
                 + "-fx-font-weight: bold;"
                 + "-fx-letter-spacing: 5px;"
+                + "-fx-font-family: Georgia;"
                 + "-fx-effect: dropshadow(gaussian, #b84cff, 20, 0.6, 0, 0);"
         );
 
@@ -166,7 +164,12 @@ public class CreditsScreen extends StackPane {
 
         content.setAlignment(Pos.CENTER);
 
-        content.setMaxWidth(600);
+        content.setMaxWidth(650);
+        content.setPadding(new javafx.geometry.Insets(28, 42, 28, 42));
+        content.setStyle("-fx-background-color: rgba(13, 8, 19, 0.94);"
+                + "-fx-background-radius: 14px;-fx-border-color: #987452;"
+                + "-fx-border-radius: 14px;-fx-border-width: 1.5px;");
+        content.setEffect(new javafx.scene.effect.DropShadow(24, javafx.scene.paint.Color.rgb(0, 0, 0, 0.55)));
 
         getChildren().add(content);
     }
@@ -177,56 +180,9 @@ public class CreditsScreen extends StackPane {
     private Button createButton(String text) {
 
         Button button = new Button(text);
-        button.setOnMouseClicked(event -> ScreenManager.getActive().getAudioManager().playClick());
-
         button.setPrefWidth(280);
         button.setPrefHeight(46);
-
-        button.setStyle(
-                "-fx-background-color: #170d22;"
-                + "-fx-border-color: #6d3a91;"
-                + "-fx-border-width: 1.5px;"
-                + "-fx-border-radius: 8px;"
-                + "-fx-background-radius: 8px;"
-                + "-fx-text-fill: white;"
-                + "-fx-font-size: 13px;"
-                + "-fx-font-weight: bold;"
-                + "-fx-letter-spacing: 2px;"
-                + "-fx-cursor: hand;"
-        );
-
-        button.setOnMouseEntered(event -> {
-
-            button.setStyle(
-                    "-fx-background-color: #35104a;"
-                    + "-fx-border-color: #b84cff;"
-                    + "-fx-border-width: 2px;"
-                    + "-fx-border-radius: 8px;"
-                    + "-fx-background-radius: 8px;"
-                    + "-fx-text-fill: white;"
-                    + "-fx-font-size: 13px;"
-                    + "-fx-font-weight: bold;"
-                    + "-fx-letter-spacing: 2px;"
-                    + "-fx-cursor: hand;"
-                    + "-fx-effect: dropshadow(gaussian, #b84cff, 15, 0.5, 0, 0);"
-            );
-        });
-
-        button.setOnMouseExited(event -> {
-
-            button.setStyle(
-                    "-fx-background-color: #170d22;"
-                    + "-fx-border-color: #6d3a91;"
-                    + "-fx-border-width: 1.5px;"
-                    + "-fx-border-radius: 8px;"
-                    + "-fx-background-radius: 8px;"
-                    + "-fx-text-fill: white;"
-                    + "-fx-font-size: 13px;"
-                    + "-fx-font-weight: bold;"
-                    + "-fx-letter-spacing: 2px;"
-                    + "-fx-cursor: hand;"
-            );
-        });
+        HorrorUiTheme.styleButton(button, ScreenManager.getActive().getAudioManager());
 
         return button;
     }

@@ -1,6 +1,7 @@
 package com.disorient.screen;
 
 import com.disorient.manager.ScreenManager;
+import com.disorient.model.CampaignMap;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -24,6 +25,17 @@ public class LevelCompleteScreen extends StackPane {
             int remainingTime,
             int remainingLives,
             ScreenManager screenManager
+    ) {
+        this(level, score, remainingTime, remainingLives, screenManager, CampaignMap.MANSION);
+    }
+
+    public LevelCompleteScreen(
+            int level,
+            int score,
+            int remainingTime,
+            int remainingLives,
+            ScreenManager screenManager,
+            CampaignMap campaignMap
     ) {
 
         // =========================
@@ -49,7 +61,8 @@ public class LevelCompleteScreen extends StackPane {
         // LEVEL
         // =========================
         Label levelLabel
-                = new Label(String.format("HAUNTED HOUSE • LEVEL %02d", level));
+                = new Label(String.format("%s • LEVEL %02d",
+                        campaignMap.getDisplayName().toUpperCase(), level));
 
         levelLabel.setStyle(
                 "-fx-text-fill: #b99acb;"
@@ -119,7 +132,7 @@ public class LevelCompleteScreen extends StackPane {
         nextLevelButton.setDisable(level >= screenManager.getGameManager().getTotalLevels());
 
         nextLevelButton.setOnAction(event -> {
-            screenManager.startLevel(level + 1);
+            screenManager.startCampaignMapLevel(campaignMap, level + 1);
         });
 
         // =========================
@@ -139,7 +152,7 @@ public class LevelCompleteScreen extends StackPane {
                 = createButton("CAMPAIGN", screenManager);
 
         campaignButton.setOnAction(event -> {
-            screenManager.showCampaign();
+            screenManager.showCampaignMapLevels(campaignMap);
         });
 
         // =========================

@@ -13,6 +13,7 @@ public class LeaderboardManager {
     private static final int TOTAL_LEVELS = GameManager.TOTAL_LEVELS;
 
     private final Map<Integer, LeaderboardEntry> entries;
+    private String playerName = "PLAYER";
 
     public LeaderboardManager() {
         entries = new HashMap<>();
@@ -25,10 +26,23 @@ public class LeaderboardManager {
 
         LeaderboardEntry existing = entries.get(level);
         if (existing == null) {
-            entries.put(level, new LeaderboardEntry("PLAYER", completionTimeSeconds, level));
+            entries.put(level, new LeaderboardEntry(playerName, completionTimeSeconds, level));
         } else if (completionTimeSeconds < existing.getCompletionTime()) {
             existing.setCompletionTime(completionTimeSeconds);
+            existing.setPlayerName(playerName);
         }
+    }
+
+    public String getPlayerName() {
+        return playerName;
+    }
+
+    public void setPlayerName(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return;
+        }
+        this.playerName = playerName.strip();
+        entries.values().forEach(entry -> entry.setPlayerName(this.playerName));
     }
 
     public List<LeaderboardEntry> getEntries() {
@@ -44,7 +58,13 @@ public class LeaderboardManager {
 
     public void setBestTime(int level, int completionTimeSeconds) {
         if (level >= 1 && level <= TOTAL_LEVELS && completionTimeSeconds >= 0) {
-            entries.put(level, new LeaderboardEntry("PLAYER", completionTimeSeconds, level));
+            entries.put(level, new LeaderboardEntry(playerName, completionTimeSeconds, level));
+        }
+    }
+
+    public void setBestTime(int level, int completionTimeSeconds, String playerName) {
+        if (level >= 1 && level <= TOTAL_LEVELS && completionTimeSeconds >= 0) {
+            entries.put(level, new LeaderboardEntry(playerName, completionTimeSeconds, level));
         }
     }
 

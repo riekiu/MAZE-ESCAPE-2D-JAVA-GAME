@@ -25,14 +25,11 @@ public class HowToPlayScreen extends StackPane {
     }
 
     public HowToPlayScreen(ScreenManager screenManager) {
-        setStyle("-fx-background-color: linear-gradient(to bottom right, #07040b, #1a1024, #08050d);");
+        HorrorUiTheme.applyBackdrop(this);
 
         Button back = new Button("BACK TO MAIN MENU");
-        back.setOnMousePressed(event -> screenManager.getAudioManager().playClick());
         back.setOnAction(event -> screenManager.showMainMenu());
-        back.setStyle("-fx-background-color: #21142d;-fx-border-color: #795692;"
-                + "-fx-border-radius: 7px;-fx-background-radius: 7px;-fx-text-fill: #f4e7ce;"
-                + "-fx-font-size: 11px;-fx-font-weight: bold;-fx-padding: 11px 16px;-fx-cursor: hand;");
+        HorrorUiTheme.styleButton(back, screenManager.getAudioManager());
 
         Label eyebrow = new Label("FIELD GUIDE  /  DISORIENT");
         eyebrow.setStyle("-fx-text-fill: #b983d0;-fx-font-size: 10px;-fx-font-weight: bold;"
@@ -94,7 +91,7 @@ public class HowToPlayScreen extends StackPane {
                 createSection("08  /  PERSONAL RECORDS", "Beat your best time",
                         "The leaderboard stores your fastest completion time for each level. Its rating "
                                 + "compares your time with that level's limit: Excellent, Good, Average, "
-                                + "Below Average, or Poor. It is a local personal-best board."),
+                                + "Below Average, or Poor. Set the name shown beside your records in Settings."),
                 createSection("09  /  SAVE AND RETRY", "Continue when you return",
                         "Play resumes your saved level, score, hearts, progress, stars, and best times. "
                                 + "Campaign lets you preview level difficulty, maze size, time, and best stars. "
@@ -119,7 +116,7 @@ public class HowToPlayScreen extends StackPane {
         layout.setCenter(guideScroll);
         layout.setMaxWidth(1120);
         layout.setStyle("-fx-background-color: rgba(13, 8, 19, 0.96);"
-                + "-fx-background-radius: 14px;-fx-border-color: #704a86;-fx-border-radius: 14px;"
+                + "-fx-background-radius: 14px;-fx-border-color: #987452;-fx-border-radius: 14px;"
                 + "-fx-border-width: 1.5px;");
         StackPane.setAlignment(layout, Pos.CENTER);
         StackPane.setMargin(layout, new Insets(24));

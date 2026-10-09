@@ -1,6 +1,7 @@
 package com.disorient.screen;
 
 import com.disorient.manager.ScreenManager;
+import com.disorient.model.CampaignMap;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -14,6 +15,16 @@ public class VictoryScreen extends StackPane {
     }
 
     public VictoryScreen(int totalScore, int levelsCompleted, int bestScore, ScreenManager screenManager) {
+        this(totalScore, levelsCompleted, bestScore, screenManager, CampaignMap.MANSION);
+    }
+
+    public VictoryScreen(
+            int totalScore,
+            int levelsCompleted,
+            int bestScore,
+            ScreenManager screenManager,
+            CampaignMap campaignMap
+    ) {
 
         // =========================
         // BACKGROUND
@@ -40,7 +51,7 @@ public class VictoryScreen extends StackPane {
         // SUBTITLE
         // =========================
         Label subtitle = new Label(
-                "YOU SURVIVED THE HAUNTED HOUSE"
+                "YOU SURVIVED " + campaignMap.getDisplayName().toUpperCase()
         );
 
         subtitle.setStyle(
@@ -89,7 +100,11 @@ public class VictoryScreen extends StackPane {
                 = createButton("PLAY AGAIN", screenManager);
 
         playAgainButton.setOnAction(event -> {
-            screenManager.startNewGame();
+            if (campaignMap == CampaignMap.MANSION) {
+                screenManager.startNewGame();
+            } else {
+                screenManager.startCampaignMapLevel(campaignMap, 1);
+            }
         });
 
         // =========================
@@ -99,7 +114,7 @@ public class VictoryScreen extends StackPane {
                 = createButton("CAMPAIGN", screenManager);
 
         campaignButton.setOnAction(event -> {
-            screenManager.showCampaign();
+            screenManager.showCampaignMapLevels(campaignMap);
         });
 
         // =========================

@@ -108,8 +108,7 @@ public class Maze {
 
         Tile tile = getTile(row, column);
 
-        return tile != null
-                && tile.getType() == Tile.Type.WALL;
+        return tile != null && tile.isWall();
     }
 
     // =========================

@@ -11,6 +11,18 @@ public class SettingsManager {
     private boolean showTimer = true;
     private boolean screenShake = true;
     private boolean animations = true;
+    private String playerName = "PLAYER";
+
+    public String getPlayerName() {
+        return playerName;
+    }
+
+    public void setPlayerName(String playerName) {
+        String normalized = playerName == null ? "" : playerName.strip();
+        if (!normalized.isEmpty()) {
+            this.playerName = normalized.substring(0, Math.min(20, normalized.length()));
+        }
+    }
 
     // =========================
     // MASTER VOLUME

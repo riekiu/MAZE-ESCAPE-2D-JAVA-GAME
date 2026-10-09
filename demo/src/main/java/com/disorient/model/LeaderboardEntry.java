@@ -17,7 +17,7 @@ public class LeaderboardEntry {
             int score,
             int level
     ) {
-        this.playerName = playerName;
+        setPlayerName(playerName);
         this.score = Math.max(0, score);
         this.level = Math.max(1, Math.min(50, level));
     }
@@ -34,7 +34,8 @@ public class LeaderboardEntry {
         if (playerName == null || playerName.isBlank()) {
             this.playerName = "PLAYER";
         } else {
-            this.playerName = playerName;
+            String normalized = playerName.strip();
+            this.playerName = normalized.substring(0, Math.min(20, normalized.length()));
         }
     }
 

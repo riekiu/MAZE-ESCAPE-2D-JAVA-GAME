@@ -46,7 +46,7 @@ public class MainMenuScreen extends StackPane {
         Button play = createImageButton("play_button", 370 * scale, 104 * scale);
         play.setOnAction(event -> screenManager.playLastPlayedLevel());
         Button campaign = createImageButton("campaign_button", 370 * scale, 92 * scale);
-        campaign.setOnAction(event -> screenManager.showCampaign());
+        campaign.setOnAction(event -> screenManager.showCampaignMaps());
         Button settings = createImageButton("settings_button", 100 * scale, 78 * scale);
         settings.setOnAction(event -> screenManager.showSettings());
         Button howToPlay = createImageButton("howtoplay_button", 370 * scale, 80 * scale);
